@@ -1,16 +1,15 @@
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import * as schema from "@shared/schema";
-import path from "path";
 
-const dbPath =
-  process.env.DATABASE_PATH ||
-  (process.env.NODE_ENV === "production"
-    ? "/data/asgard.db"
-    : path.resolve(process.cwd(), "asgard.db"));
-const sqlite = new Database(dbPath);
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required");
+}
 
-// Enable WAL mode for better concurrent read performance
-sqlite.pragma("journal_mode = WAL");
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+});
 
-export const db = drizzle(sqlite, { schema });
+export const db = drizzle(pool, { schema });
+export { pool };
