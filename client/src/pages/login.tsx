@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Shield, Eye, EyeOff, ArrowRight, Dumbbell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import gymLogo from "@assets/Dise#U00f1o_sin_t#U00edtulo_(1)_1773984151411.png";
+import gymLogo from "@assets/asgard-logo.png";
 
 type Step = "id" | "password";
 

@@ -4,7 +4,7 @@ import { LayoutDashboard, Users, LogOut, Menu, X } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import gymLogo from "@assets/Dise#U00f1o_sin_t#U00edtulo_(1)_1773984151411.png";
+import gymLogo from "@assets/asgard-logo.png";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();

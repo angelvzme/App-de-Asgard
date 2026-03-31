@@ -5,7 +5,7 @@ import { es } from "date-fns/locale";
 import { motion } from "framer-motion";
 import { LogOut, Dumbbell, Clock, TrendingUp, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import gymLogo from "@assets/Dise#U00f1o_sin_t#U00edtulo_(1)_1773984151411.png";
+import gymLogo from "@assets/asgard-logo.png";
 import type { CheckIn } from "@shared/schema";
 
 function useMyCheckIns() {
