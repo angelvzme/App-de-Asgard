@@ -8,6 +8,9 @@ import { seedDatabase } from "./seed";
 const app = express();
 const httpServer = createServer(app);
 
+// Trust Railway's reverse proxy so secure cookies work correctly
+app.set('trust proxy', 1);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

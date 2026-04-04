@@ -30,25 +30,28 @@ function SessionsBadge({ n, isUnlimited }: { n: number; isUnlimited: boolean }) 
 
 function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const create = useCreateMember();
-  const [form, setForm] = useState({ firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 10, membershipType: "sessions", birthDate: "", notes: "" });
+  const [form, setForm] = useState({ firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 0, membershipType: "sessions", birthDate: "", notes: "" });
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    create.mutate({ ...form, active: true, initialSessions: Number(form.initialSessions) }, { onSuccess: () => { onOpenChange(false); setForm({ firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 10, membershipType: "sessions", birthDate: "", notes: "" }); } });
+    create.mutate({ ...form, active: true, initialSessions: Number(form.initialSessions) || 0 }, { onSuccess: () => { onOpenChange(false); setForm({ firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 0, membershipType: "sessions", birthDate: "", notes: "" }); } });
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px] bg-card border-border max-h-[90vh] overflow-y-auto">
         <DialogHeader><DialogTitle className="font-display">Agregar Nuevo Miembro</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><Label>Nombre</Label><Input value={form.firstName} onChange={e => set("firstName", e.target.value)} required /></div>
-            <div className="space-y-1"><Label>Apellido</Label><Input value={form.lastName} onChange={e => set("lastName", e.target.value)} required /></div>
+          <div className="space-y-1">
+            <Label>ID de Miembro <span className="text-primary text-xs">(requerido)</span></Label>
+            <Input value={form.memberId} onChange={e => set("memberId", e.target.value)} placeholder="Ej: 1003" required />
           </div>
-          <div className="space-y-1"><Label>ID de Miembro</Label><Input value={form.memberId} onChange={e => set("memberId", e.target.value)} placeholder="Ej: 1003" required /></div>
           <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-1"><Label>Teléfono</Label><Input value={form.phone} onChange={e => set("phone", e.target.value)} /></div>
-            <div className="space-y-1"><Label>Email</Label><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} /></div>
+            <div className="space-y-1"><Label>Nombre</Label><Input value={form.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Opcional" /></div>
+            <div className="space-y-1"><Label>Apellido</Label><Input value={form.lastName} onChange={e => set("lastName", e.target.value)} placeholder="Opcional" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><Label>Teléfono</Label><Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Opcional" /></div>
+            <div className="space-y-1"><Label>Email</Label><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="Opcional" /></div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1"><Label>Tipo de Membresía</Label>
@@ -57,10 +60,10 @@ function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
                 <SelectContent><SelectItem value="sessions">Sesiones</SelectItem><SelectItem value="monthly">Mensual</SelectItem><SelectItem value="unlimited">Ilimitada</SelectItem></SelectContent>
               </Select>
             </div>
-            <div className="space-y-1"><Label>Sesiones Iniciales</Label><Input type="number" value={form.initialSessions} onChange={e => set("initialSessions", e.target.value)} /></div>
+            <div className="space-y-1"><Label>Sesiones Iniciales</Label><Input type="number" value={form.initialSessions} onChange={e => set("initialSessions", e.target.value)} placeholder="0" /></div>
           </div>
           <div className="space-y-1"><Label>Fecha de Nacimiento</Label><Input type="date" value={form.birthDate} onChange={e => set("birthDate", e.target.value)} /></div>
-          <div className="space-y-1"><Label>Notas</Label><Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
+          <div className="space-y-1"><Label>Notas</Label><Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Opcional" /></div>
           <DialogFooter><Button type="submit" disabled={create.isPending}>{create.isPending ? "Creando..." : "Crear Miembro"}</Button></DialogFooter>
         </form>
       </DialogContent>

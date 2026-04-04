@@ -73,6 +73,8 @@ export const paymentsRelations = relations(payments, ({ one }) => ({
 export const insertMemberSchema = createInsertSchema(members).omit({
   id: true, createdAt: true, totalSessions: true, remainingSessions: true,
 }).extend({
+  firstName: z.string().optional().default(""),
+  lastName: z.string().optional().default(""),
   initialSessions: z.number().min(0).optional(),
 });
 
