@@ -46,19 +46,35 @@ export type Exercise = {
   notes: string;
 };
 
+export type WorkoutBlock = {
+  title: string;
+  exercises: Exercise[];
+};
+
+// workouts: weekly (dayOfWeek not null) or personalized (dayOfWeek null, isPersonalized true)
 export const workouts = pgTable("workouts", {
   id: serial("id").primaryKey(),
-  dayOfWeek: integer("day_of_week").notNull().unique(),
+  dayOfWeek: integer("day_of_week"),           // nullable: null = personalized
   title: text("title").notNull(),
-  exercises: json("exercises").$type<Exercise[]>().default([]),
+  blocks: json("blocks").$type<WorkoutBlock[]>().default([]),
+  isPersonalized: boolean("is_personalized").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const memberWorkouts = pgTable("member_workouts", {
+  id: serial("id").primaryKey(),
+  memberId: integer("member_id").notNull(),
+  workoutId: integer("workout_id").notNull(),
+  assignedAt: timestamp("assigned_at").defaultNow(),
+  expiresAt: timestamp("expires_at").notNull(),
 });
 
 // Relations
 export const membersRelations = relations(members, ({ many }) => ({
   checkIns: many(checkIns),
   payments: many(payments),
+  memberWorkouts: many(memberWorkouts),
 }));
 
 export const checkInsRelations = relations(checkIns, ({ one }) => ({
@@ -67,6 +83,15 @@ export const checkInsRelations = relations(checkIns, ({ one }) => ({
 
 export const paymentsRelations = relations(payments, ({ one }) => ({
   member: one(members, { fields: [payments.memberId], references: [members.id] }),
+}));
+
+export const workoutsRelations = relations(workouts, ({ many }) => ({
+  memberWorkouts: many(memberWorkouts),
+}));
+
+export const memberWorkoutsRelations = relations(memberWorkouts, ({ one }) => ({
+  member: one(members, { fields: [memberWorkouts.memberId], references: [members.id] }),
+  workout: one(workouts, { fields: [memberWorkouts.workoutId], references: [workouts.id] }),
 }));
 
 // Schemas
@@ -90,15 +115,27 @@ export const insertPaymentSchema = z.object({
   note: z.string().optional(),
 });
 
+export const exerciseSchema = z.object({
+  name: z.string(),
+  sets: z.number(),
+  reps: z.string(),
+  duration: z.string(),
+  notes: z.string(),
+});
+
+export const workoutBlockSchema = z.object({
+  title: z.string(),
+  exercises: z.array(exerciseSchema),
+});
+
 export const upsertWorkoutSchema = z.object({
   title: z.string().min(1),
-  exercises: z.array(z.object({
-    name: z.string(),
-    sets: z.number(),
-    reps: z.string(),
-    duration: z.string(),
-    notes: z.string(),
-  })),
+  blocks: z.array(workoutBlockSchema),
+});
+
+export const assignWorkoutSchema = z.object({
+  title: z.string().min(1),
+  blocks: z.array(workoutBlockSchema),
 });
 
 // Types
@@ -107,7 +144,9 @@ export type InsertMember = z.infer<typeof insertMemberSchema>;
 export type CheckIn = typeof checkIns.$inferSelect;
 export type Payment = typeof payments.$inferSelect;
 export type Workout = typeof workouts.$inferSelect;
+export type MemberWorkout = typeof memberWorkouts.$inferSelect;
 export type CreateMemberRequest = InsertMember;
 export type UpdateMemberRequest = Partial<InsertMember>;
 export type InsertPayment = z.infer<typeof insertPaymentSchema>;
 export type UpsertWorkout = z.infer<typeof upsertWorkoutSchema>;
+export type AssignWorkout = z.infer<typeof assignWorkoutSchema>;

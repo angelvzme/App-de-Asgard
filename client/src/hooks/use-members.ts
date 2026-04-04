@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import type { Member, CheckIn, Payment, Workout, InsertPayment, UpsertWorkout } from "@shared/schema";
+import type { Member, CheckIn, Payment, Workout, InsertPayment, UpsertWorkout, AssignWorkout } from "@shared/schema";
 
 const json = async (res: Response) => {
   const data = await res.json();
@@ -20,7 +20,10 @@ export function useCreateMember() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (data: any) => fetch("/api/members", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
+    mutationFn: (data: any) => fetch("/api/members", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), credentials: "include",
+    }).then(json),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Miembro creado" }); },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -30,7 +33,10 @@ export function useUpdateMember() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: number } & any) => fetch(`/api/members/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
+    mutationFn: ({ id, ...data }: { id: number } & any) => fetch(`/api/members/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), credentials: "include",
+    }).then(json),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Miembro actualizado" }); },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -40,7 +46,10 @@ export function useAddSessions() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: ({ id, sessions }: { id: number; sessions: number }) => fetch(`/api/members/${id}/sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessions }), credentials: "include" }).then(json),
+    mutationFn: ({ id, sessions }: { id: number; sessions: number }) => fetch(`/api/members/${id}/sessions`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessions }), credentials: "include",
+    }).then(json),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Sesiones agregadas" }); },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -50,7 +59,8 @@ export function useDeleteMember() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (id: number) => fetch(`/api/members/${id}`, { method: "DELETE", credentials: "include" }).then(r => { if (!r.ok) throw new Error("Error al eliminar"); }),
+    mutationFn: (id: number) => fetch(`/api/members/${id}`, { method: "DELETE", credentials: "include" })
+      .then(r => { if (!r.ok) throw new Error("Error al eliminar"); }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Miembro eliminado" }); },
   });
 }
@@ -73,8 +83,30 @@ export function useMyCheckIns() {
 export function useKioskCheckIn() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (memberId: string) => fetch("/api/check-ins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberId }) }).then(json),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/check-ins"] }); qc.invalidateQueries({ queryKey: ["/api/members"] }); },
+    mutationFn: (memberId: string) => fetch("/api/check-ins", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memberId }),
+    }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/check-ins"] });
+      qc.invalidateQueries({ queryKey: ["/api/members"] });
+    },
+  });
+}
+
+// Member self check-in (from dashboard)
+export function useMemberCheckIn() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: () => fetch("/api/me/check-in", {
+      method: "POST", credentials: "include",
+    }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/me/check-ins"] });
+      qc.invalidateQueries({ queryKey: ["/api/me/full"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }
 
@@ -83,8 +115,15 @@ export function useCreatePayment() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: (data: InsertPayment) => fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); qc.invalidateQueries({ queryKey: ["/api/payments"] }); toast({ title: "Pago registrado" }); },
+    mutationFn: (data: InsertPayment) => fetch("/api/payments", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), credentials: "include",
+    }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/members"] });
+      qc.invalidateQueries({ queryKey: ["/api/payments"] });
+      toast({ title: "Pago registrado" });
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }
@@ -97,7 +136,7 @@ export function useMemberPayments(memberId: number) {
   });
 }
 
-// Workouts
+// Weekly Workouts
 export function useAllWorkouts() {
   return useQuery<Workout[]>({
     queryKey: ["/api/workouts"],
@@ -106,9 +145,10 @@ export function useAllWorkouts() {
 }
 
 export function useWorkoutToday() {
+  const day = new Date().getDay();
   return useQuery<Workout | null>({
-    queryKey: ["/api/me/workout-today"],
-    queryFn: () => fetch("/api/me/workout-today", { credentials: "include" }).then(json),
+    queryKey: ["/api/workouts/day", day],
+    queryFn: () => fetch(`/api/workouts/day/${day}`, { credentials: "include" }).then(json),
   });
 }
 
@@ -116,8 +156,15 @@ export function useUpsertWorkout() {
   const qc = useQueryClient();
   const { toast } = useToast();
   return useMutation({
-    mutationFn: ({ day, data }: { day: number; data: UpsertWorkout }) => fetch(`/api/workouts/${day}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/workouts"] }); toast({ title: "Rutina guardada" }); },
+    mutationFn: ({ day, data }: { day: number; data: UpsertWorkout }) =>
+      fetch(`/api/workouts/day/${day}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data), credentials: "include",
+      }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/workouts"] });
+      toast({ title: "Rutina guardada" });
+    },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }
@@ -125,7 +172,33 @@ export function useUpsertWorkout() {
 export function useDeleteWorkout() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (day: number) => fetch(`/api/workouts/${day}`, { method: "DELETE", credentials: "include" }).then(r => { if (!r.ok) throw new Error("Error"); }),
+    mutationFn: (day: number) => fetch(`/api/workouts/day/${day}`, {
+      method: "DELETE", credentials: "include",
+    }).then(r => { if (!r.ok) throw new Error("Error"); }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/workouts"] }),
+  });
+}
+
+// Personalized Workouts
+export function useMyPersonalWorkouts() {
+  return useQuery<Workout[]>({
+    queryKey: ["/api/me/workouts"],
+    queryFn: () => fetch("/api/me/workouts", { credentials: "include" }).then(json),
+  });
+}
+
+export function useAssignWorkout(memberId: number) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (data: AssignWorkout) => fetch(`/api/members/${memberId}/workouts`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), credentials: "include",
+    }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/members/${memberId}/workouts`] });
+      toast({ title: "Rutina asignada", description: "El miembro verá la rutina en su dashboard por 6 horas." });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }

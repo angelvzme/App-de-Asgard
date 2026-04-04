@@ -4,7 +4,7 @@ import { members } from "@shared/schema";
 import { eq } from "drizzle-orm";
 
 export async function seedDatabase() {
-  // Create tables
+  // ── Core tables ──────────────────────────────────────────────────────────
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS members (
       id SERIAL PRIMARY KEY, member_id TEXT NOT NULL UNIQUE, first_name TEXT NOT NULL,
@@ -26,15 +26,32 @@ export async function seedDatabase() {
       payment_method TEXT NOT NULL, sessions INTEGER, note TEXT, created_at TIMESTAMP DEFAULT NOW()
     )
   `);
+
+  // workouts: dayOfWeek nullable (personalized workouts have null), no UNIQUE constraint
   await db.execute(sql`
     CREATE TABLE IF NOT EXISTS workouts (
-      id SERIAL PRIMARY KEY, day_of_week INTEGER NOT NULL UNIQUE, title TEXT NOT NULL,
-      exercises JSON DEFAULT '[]', created_at TIMESTAMP DEFAULT NOW(), updated_at TIMESTAMP DEFAULT NOW()
+      id SERIAL PRIMARY KEY,
+      day_of_week INTEGER,
+      title TEXT NOT NULL,
+      blocks JSON DEFAULT '[]',
+      is_personalized BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMP DEFAULT NOW(),
+      updated_at TIMESTAMP DEFAULT NOW()
     )
   `);
 
-  // Add missing columns to members if upgrading
-  const alterCols = [
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS member_workouts (
+      id SERIAL PRIMARY KEY,
+      member_id INTEGER NOT NULL,
+      workout_id INTEGER NOT NULL,
+      assigned_at TIMESTAMP DEFAULT NOW(),
+      expires_at TIMESTAMP NOT NULL
+    )
+  `);
+
+  // ── Migrations for existing databases ─────────────────────────────────────
+  const memberAlters = [
     `ALTER TABLE members ADD COLUMN IF NOT EXISTS membership_type TEXT NOT NULL DEFAULT 'sessions'`,
     `ALTER TABLE members ADD COLUMN IF NOT EXISTS expires_at TIMESTAMP`,
     `ALTER TABLE members ADD COLUMN IF NOT EXISTS last_payment_date TIMESTAMP`,
@@ -42,11 +59,25 @@ export async function seedDatabase() {
     `ALTER TABLE members ADD COLUMN IF NOT EXISTS notes TEXT`,
     `ALTER TABLE members ADD COLUMN IF NOT EXISTS is_special_user BOOLEAN NOT NULL DEFAULT false`,
   ];
-  for (const alter of alterCols) {
+  for (const alter of memberAlters) {
     await db.execute(sql.raw(alter));
   }
 
-  // Seed admin members 1001 and 1002
+  // workouts table migrations: add new columns, relax constraints
+  const workoutAlters = [
+    // add new columns if old table exists
+    `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS blocks JSON DEFAULT '[]'`,
+    `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS is_personalized BOOLEAN NOT NULL DEFAULT false`,
+    // make day_of_week nullable (was NOT NULL in old schema)
+    `ALTER TABLE workouts ALTER COLUMN day_of_week DROP NOT NULL`,
+    // drop the unique constraint if it exists (from old schema)
+    `ALTER TABLE workouts DROP CONSTRAINT IF EXISTS workouts_day_of_week_key`,
+  ];
+  for (const alter of workoutAlters) {
+    try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
+  }
+
+  // ── Seed admin members 1001 / 1002 ───────────────────────────────────────
   for (const admin of [
     { memberId: "1001", firstName: "Admin", lastName: "Asgard" },
     { memberId: "1002", firstName: "Maestro", lastName: "Asgard" },
@@ -60,7 +91,8 @@ export async function seedDatabase() {
       });
       console.log(`[seed] Created master member ${admin.memberId}`);
     } else {
-      await db.update(members).set({ membershipType: "unlimited", isSpecialUser: true }).where(eq(members.memberId, admin.memberId));
+      await db.update(members).set({ membershipType: "unlimited", isSpecialUser: true })
+        .where(eq(members.memberId, admin.memberId));
     }
   }
   console.log("[seed] Database ready.");

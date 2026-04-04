@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useMembers, useCreateMember, useUpdateMember, useDeleteMember, useCreatePayment } from "@/hooks/use-members";
+import { useMembers, useCreateMember, useUpdateMember, useDeleteMember, useCreatePayment, useAssignWorkout } from "@/hooks/use-members";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,11 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, MoreHorizontal, Pencil, Trash, MessageCircle, CreditCard, Shield } from "lucide-react";
+import { Search, Plus, MoreHorizontal, Pencil, Trash, MessageCircle, CreditCard, Shield, Dumbbell } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import AdminLayout from "@/components/layout-admin";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
+import type { WorkoutBlock, Exercise } from "@shared/schema";
 import type { Member } from "@shared/schema";
 
 const MEMBERSHIP_LABELS: Record<string, string> = { sessions: "Sesiones", monthly: "Mensual", unlimited: "Ilimitada" };
@@ -150,6 +151,103 @@ function PaymentDialog({ member, open, onOpenChange }: { member: Member; open: b
   );
 }
 
+// ── Assign Workout Dialog ──────────────────────────────────────────────────
+function emptyExercise(): Exercise { return { name: "", sets: 3, reps: "10", duration: "", notes: "" }; }
+function emptyBlock(): WorkoutBlock { return { title: "", exercises: [emptyExercise()] }; }
+
+function AssignWorkoutDialog({ member, open, onOpenChange }: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const assign = useAssignWorkout(member.id);
+  const [title, setTitle] = useState("");
+  const [blocks, setBlocks] = useState<WorkoutBlock[]>([emptyBlock()]);
+
+  const addBlock = () => setBlocks(p => [...p, emptyBlock()]);
+  const removeBlock = (i: number) => setBlocks(p => p.filter((_, idx) => idx !== i));
+  const updateBlock = (i: number, b: WorkoutBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
+
+  const setEx = (bi: number, ei: number, k: keyof Exercise, v: any) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.map((e, idx) => idx === ei ? { ...e, [k]: v } : e) });
+  const addEx = (bi: number) => updateBlock(bi, { ...blocks[bi], exercises: [...blocks[bi].exercises, emptyExercise()] });
+  const removeEx = (bi: number, ei: number) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.filter((_, idx) => idx !== ei) });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    assign.mutate({ title, blocks }, {
+      onSuccess: () => {
+        onOpenChange(false);
+        setTitle("");
+        setBlocks([emptyBlock()]);
+      },
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[560px] bg-card border-border max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="font-display">Rutina para {member.firstName} {member.lastName}</DialogTitle>
+          <p className="text-xs text-muted-foreground">Visible en su dashboard por 6 horas desde la asignación.</p>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-5 py-2">
+          <div className="space-y-1">
+            <Label>Título general</Label>
+            <Input placeholder="Ej: Rutina de Pierna Personalizada" value={title} onChange={e => setTitle(e.target.value)} required />
+          </div>
+
+          {blocks.map((block, bi) => (
+            <div key={bi} className="bg-secondary/10 border border-border rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Bloque {bi + 1}</Label>
+                  <Input placeholder='Ej: "Rutina A", "Nivel intermedio"'
+                    value={block.title} onChange={e => updateBlock(bi, { ...block, title: e.target.value })} />
+                </div>
+                {blocks.length > 1 && (
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-400 self-end"
+                    onClick={() => removeBlock(bi)}><Trash className="h-4 w-4" /></Button>
+                )}
+              </div>
+
+              {block.exercises.map((ex, ei) => (
+                <div key={ei} className="bg-card border border-border/60 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Ejercicio {ei + 1}</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400"
+                      onClick={() => removeEx(bi, ei)}><Trash className="h-3 w-3" /></Button>
+                  </div>
+                  <Input placeholder="Nombre del ejercicio" value={ex.name} onChange={e => setEx(bi, ei, "name", e.target.value)} />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input type="number" placeholder="Series" value={ex.sets}
+                      onChange={e => setEx(bi, ei, "sets", Number(e.target.value))} />
+                    <Input placeholder="Reps" value={ex.reps} onChange={e => setEx(bi, ei, "reps", e.target.value)} />
+                    <Input placeholder="Duración" value={ex.duration} onChange={e => setEx(bi, ei, "duration", e.target.value)} />
+                  </div>
+                  <Input placeholder="Notas (opcional)" value={ex.notes} onChange={e => setEx(bi, ei, "notes", e.target.value)} />
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="w-full border-dashed" onClick={() => addEx(bi)}>
+                <Plus className="h-4 w-4 mr-1" /> Agregar ejercicio
+              </Button>
+            </div>
+          ))}
+
+          <Button type="button" variant="outline" className="w-full" onClick={addBlock}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar bloque
+          </Button>
+
+          <DialogFooter>
+            <Button type="submit" disabled={assign.isPending || !title.trim()}>
+              <Dumbbell className="mr-2 h-4 w-4" />
+              {assign.isPending ? "Asignando..." : "Asignar Rutina"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function sendWhatsApp(member: Member) {
   if (!member.phone) return;
   const phone = member.phone.replace(/\D/g, "");
@@ -181,6 +279,7 @@ export default function MembersPage() {
   const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
 
   const specialMembers = members?.filter(m => m.isSpecialUser) || [];
   const regularMembers = members?.filter(m => !m.isSpecialUser) || [];
@@ -195,6 +294,7 @@ export default function MembersPage() {
 
   const openEdit = (m: Member) => { setSelectedMember(m); setIsEditOpen(true); };
   const openPayment = (m: Member) => { setSelectedMember(m); setIsPaymentOpen(true); };
+  const openWorkout = (m: Member) => { setSelectedMember(m); setIsWorkoutOpen(true); };
 
   return (
     <AdminLayout>
@@ -273,6 +373,9 @@ export default function MembersPage() {
                           {!member.isSpecialUser && (
                             <DropdownMenuItem onClick={() => openPayment(member)}><CreditCard className="mr-2 h-4 w-4" />Registrar Pago</DropdownMenuItem>
                           )}
+                          {!member.isSpecialUser && (
+                            <DropdownMenuItem onClick={() => openWorkout(member)}><Dumbbell className="mr-2 h-4 w-4" />Asignar rutina</DropdownMenuItem>
+                          )}
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-red-500" onClick={() => handleDelete(member.id)}><Trash className="mr-2 h-4 w-4" />Eliminar</DropdownMenuItem>
                         </DropdownMenuContent>
@@ -291,6 +394,7 @@ export default function MembersPage() {
         <>
           <EditMemberDialog member={selectedMember} open={isEditOpen} onOpenChange={setIsEditOpen} />
           <PaymentDialog member={selectedMember} open={isPaymentOpen} onOpenChange={setIsPaymentOpen} />
+          <AssignWorkoutDialog member={selectedMember} open={isWorkoutOpen} onOpenChange={setIsWorkoutOpen} />
         </>
       )}
     </AdminLayout>
