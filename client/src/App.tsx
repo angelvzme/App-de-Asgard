@@ -9,7 +9,10 @@ import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import AdminDashboard from "@/pages/admin/dashboard";
 import MembersPage from "@/pages/admin/members";
+import WorkoutsPage from "@/pages/admin/workouts";
+import PaymentsPage from "@/pages/admin/payments";
 import MemberDashboard from "@/pages/member/dashboard";
+import KioskPage from "@/pages/kiosk";
 
 function Spinner() {
   return (
@@ -53,7 +56,14 @@ function Router() {
       <Route path="/admin/members">
         <ProtectedAdmin component={MembersPage} />
       </Route>
+      <Route path="/admin/workouts">
+        <ProtectedAdmin component={WorkoutsPage} />
+      </Route>
+      <Route path="/admin/payments">
+        <ProtectedAdmin component={PaymentsPage} />
+      </Route>
       <Route path="/member" component={ProtectedMember} />
+      <Route path="/kiosk" component={KioskPage} />
       <Route component={NotFound} />
     </Switch>
   );

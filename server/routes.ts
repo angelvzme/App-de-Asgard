@@ -1,121 +1,150 @@
-import type { Express, Request } from "express";
+import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { api } from "@shared/routes";
 import { z } from "zod";
-import {
-  checkMemberHandler,
-  loginHandler,
-  logoutHandler,
-  meHandler,
-  isAuthenticated,
-  isAdmin,
-} from "./auth";
+import { insertMemberSchema, kioskCheckInSchema, insertPaymentSchema, upsertWorkoutSchema } from "@shared/schema";
+import { checkMemberHandler, loginHandler, logoutHandler, meHandler, isAuthenticated, isAdmin } from "./auth";
 
-export async function registerRoutes(
-  httpServer: Server,
-  app: Express
-): Promise<Server> {
+export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
+  // Auth
+  app.post("/api/auth/check", checkMemberHandler);
+  app.post("/api/auth/login", loginHandler);
+  app.post("/api/auth/logout", logoutHandler);
+  app.get("/api/auth/me", meHandler);
 
-  // === Auth Routes ===
-  app.post(api.auth.check.path, checkMemberHandler);
-  app.post(api.auth.login.path, loginHandler);
-  app.post(api.auth.logout.path, logoutHandler);
-  app.get(api.auth.me.path, meHandler);
-
-  // === Member Self Routes (any logged-in member) ===
-
-  // Get own check-in history
-  app.get(api.checkIns.myCheckIns.path, isAuthenticated, async (req, res) => {
-    const user = req.session.user!;
-    const myCheckIns = await storage.getMemberCheckIns(user.id);
-    res.json(myCheckIns);
-  });
-
-  // Get own full profile (sessions info)
+  // Member self routes
   app.get("/api/me/full", isAuthenticated, async (req, res) => {
-    const user = req.session.user!;
-    const member = await storage.getMember(user.id);
-    if (!member) return res.status(404).json({ message: "Miembro no encontrado" });
+    const member = await storage.getMember(req.session.user!.id);
+    if (!member) return res.status(404).json({ message: "No encontrado" });
     res.json(member);
   });
-
-  // === Protected Admin Routes ===
-
-  app.get(api.members.list.path, isAuthenticated, isAdmin, async (req, res) => {
-    const allMembers = await storage.getMembers();
-    res.json(allMembers);
+  app.get("/api/me/check-ins", isAuthenticated, async (req, res) => {
+    res.json(await storage.getMemberCheckIns(req.session.user!.id));
+  });
+  app.get("/api/me/workout-today", isAuthenticated, async (req, res) => {
+    const day = new Date().getDay();
+    const workout = await storage.getWorkout(day);
+    res.json(workout || null);
   });
 
-  app.get(api.members.get.path, isAuthenticated, isAdmin, async (req, res) => {
-    const member = await storage.getMember(Number(req.params.id));
-    if (!member) return res.status(404).json({ message: "Miembro no encontrado" });
-    res.json(member);
-  });
-
-  app.post(api.members.create.path, isAuthenticated, isAdmin, async (req, res) => {
+  // Kiosk check-in (public)
+  app.post("/api/check-ins", async (req, res) => {
     try {
-      const input = api.members.create.input.parse(req.body);
-      const existing = await storage.getMemberByMemberId(input.memberId);
-      if (existing) return res.status(400).json({ message: "El ID de miembro ya existe" });
+      const { memberId } = kioskCheckInSchema.parse(req.body);
+      const member = await storage.getMemberByMemberId(memberId);
+      if (!member) return res.status(404).json({ message: "ID de Miembro no encontrado" });
+      if (!member.active) return res.status(400).json({ message: "La membresía está inactiva" });
 
-      const member = await storage.createMember(input);
-      res.status(201).json(member);
+      const isUnlimited = member.membershipType === "unlimited" || member.isSpecialUser;
+      if (!isUnlimited && member.remainingSessions <= 0)
+        return res.status(400).json({ message: "Sin sesiones disponibles. Por favor renueva tu membresía." });
+
+      const lastSessionWarning = !isUnlimited && member.remainingSessions === 1;
+      await storage.createCheckIn(member.id, isUnlimited);
+      const updated = await storage.getMember(member.id);
+
+      res.json({
+        success: true, message: "¡Registro de entrada exitoso!",
+        isUnlimited, lastSessionWarning,
+        remainingSessions: updated!.remainingSessions,
+        member: updated!,
+      });
     } catch (err) {
-      if (err instanceof z.ZodError)
-        return res.status(400).json({ message: err.errors[0].message, field: err.errors[0].path.join('.') });
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error(err);
       res.status(500).json({ message: "Error interno" });
     }
   });
 
-  app.put(api.members.update.path, isAuthenticated, isAdmin, async (req, res) => {
+  // Admin — Members
+  app.get("/api/members", isAuthenticated, isAdmin, async (_req, res) => res.json(await storage.getMembers()));
+  app.get("/api/members/:id", isAuthenticated, isAdmin, async (req, res) => {
+    const m = await storage.getMember(Number(req.params.id));
+    if (!m) return res.status(404).json({ message: "No encontrado" });
+    res.json(m);
+  });
+  app.post("/api/members", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const input = insertMemberSchema.parse(req.body);
+      if (await storage.getMemberByMemberId(input.memberId))
+        return res.status(400).json({ message: "El ID de miembro ya existe" });
+      res.status(201).json(await storage.createMember(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Error interno" });
+    }
+  });
+  app.put("/api/members/:id", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const input = api.members.update.input.parse(req.body);
-
+      const input = insertMemberSchema.partial().parse(req.body);
       const member = await storage.getMember(id);
-      if (!member) return res.status(404).json({ message: "Miembro no encontrado" });
-
+      if (!member) return res.status(404).json({ message: "No encontrado" });
       if (input.memberId && input.memberId !== member.memberId) {
-        const existing = await storage.getMemberByMemberId(input.memberId);
-        if (existing) return res.status(400).json({ message: "El ID de miembro ya está en uso" });
+        if (await storage.getMemberByMemberId(input.memberId))
+          return res.status(400).json({ message: "ID ya en uso" });
       }
-
-      const updated = await storage.updateMember(id, input);
-      res.json(updated);
+      res.json(await storage.updateMember(id, input));
     } catch (err) {
-      if (err instanceof z.ZodError)
-        return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "Error interno" });
     }
   });
-
-  app.post(api.members.addSessions.path, isAuthenticated, isAdmin, async (req, res) => {
+  app.post("/api/members/:id/sessions", isAuthenticated, isAdmin, async (req, res) => {
     try {
-      const id = Number(req.params.id);
       const { sessions } = z.object({ sessions: z.number().int().positive() }).parse(req.body);
-      const member = await storage.getMember(id);
-      if (!member) return res.status(404).json({ message: "Miembro no encontrado" });
-      const updated = await storage.addSessions(id, sessions);
-      res.json(updated);
+      const m = await storage.getMember(Number(req.params.id));
+      if (!m) return res.status(404).json({ message: "No encontrado" });
+      res.json(await storage.addSessions(m.id, sessions));
     } catch (err) {
-      if (err instanceof z.ZodError)
-        return res.status(400).json({ message: err.errors[0].message });
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       res.status(500).json({ message: "Error interno" });
     }
   });
-
-  app.delete(api.members.delete.path, isAuthenticated, isAdmin, async (req, res) => {
-    const id = Number(req.params.id);
-    const member = await storage.getMember(id);
-    if (!member) return res.status(404).json({ message: "Miembro no encontrado" });
-    await storage.deleteMember(id);
+  app.delete("/api/members/:id", isAuthenticated, isAdmin, async (req, res) => {
+    const m = await storage.getMember(Number(req.params.id));
+    if (!m) return res.status(404).json({ message: "No encontrado" });
+    await storage.deleteMember(m.id);
     res.status(204).send();
   });
 
-  app.get(api.checkIns.list.path, isAuthenticated, isAdmin, async (req, res) => {
-    const allCheckIns = await storage.getCheckIns();
-    res.json(allCheckIns);
+  // Admin — Check-ins
+  app.get("/api/check-ins", isAuthenticated, isAdmin, async (_req, res) => res.json(await storage.getCheckIns()));
+
+  // Admin — Payments
+  app.post("/api/payments", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const input = insertPaymentSchema.parse(req.body);
+      res.status(201).json(await storage.createPayment(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Error interno" });
+    }
+  });
+  app.get("/api/payments", isAuthenticated, isAdmin, async (_req, res) => res.json(await storage.getPayments()));
+  app.get("/api/members/:id/payments", isAuthenticated, isAdmin, async (req, res) => {
+    res.json(await storage.getMemberPayments(Number(req.params.id)));
+  });
+
+  // Workouts (readable by all authenticated, writable by admin)
+  app.get("/api/workouts", isAuthenticated, async (_req, res) => res.json(await storage.getAllWorkouts()));
+  app.get("/api/workouts/:day", isAuthenticated, async (req, res) => {
+    const w = await storage.getWorkout(Number(req.params.day));
+    res.json(w || null);
+  });
+  app.put("/api/workouts/:day", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const day = Number(req.params.day);
+      const input = upsertWorkoutSchema.parse(req.body);
+      res.json(await storage.upsertWorkout(day, input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Error interno" });
+    }
+  });
+  app.delete("/api/workouts/:day", isAuthenticated, isAdmin, async (req, res) => {
+    await storage.deleteWorkout(Number(req.params.day));
+    res.status(204).send();
   });
 
   return httpServer;

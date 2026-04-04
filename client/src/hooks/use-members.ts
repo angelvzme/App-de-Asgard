@@ -1,185 +1,131 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, buildUrl } from "@shared/routes";
 import { useToast } from "@/hooks/use-toast";
-import type { CreateMemberRequest, UpdateMemberRequest, CheckInResponse } from "@shared/schema";
+import type { Member, CheckIn, Payment, Workout, InsertPayment, UpsertWorkout } from "@shared/schema";
 
-// === Members Hooks ===
+const json = async (res: Response) => {
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.message || "Error en la solicitud");
+  return data;
+};
 
+// Members
 export function useMembers() {
-  return useQuery({
-    queryKey: [api.members.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.members.list.path, { credentials: "include" });
-      if (res.status === 401) throw new Error("Unauthorized");
-      if (!res.ok) throw new Error("Failed to fetch members");
-      return api.members.list.responses[200].parse(await res.json());
-    },
-  });
-}
-
-export function useMember(id: number) {
-  return useQuery({
-    queryKey: [api.members.get.path, id],
-    queryFn: async () => {
-      const url = buildUrl(api.members.get.path, { id });
-      const res = await fetch(url, { credentials: "include" });
-      if (res.status === 404) return null;
-      if (res.status === 401) throw new Error("Unauthorized");
-      if (!res.ok) throw new Error("Failed to fetch member");
-      return api.members.get.responses[200].parse(await res.json());
-    },
-    enabled: !!id,
+  return useQuery<Member[]>({
+    queryKey: ["/api/members"],
+    queryFn: () => fetch("/api/members", { credentials: "include" }).then(json),
   });
 }
 
 export function useCreateMember() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   const { toast } = useToast();
-
   return useMutation({
-    mutationFn: async (data: CreateMemberRequest) => {
-      const res = await fetch(api.members.create.path, {
-        method: api.members.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-      
-      if (!res.ok) {
-        if (res.status === 400) {
-          const error = await res.json();
-          throw new Error(error.message || "Validation failed");
-        }
-        throw new Error("Failed to create member");
-      }
-      return api.members.create.responses[201].parse(await res.json());
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.members.list.path] });
-      toast({ title: "Éxito", description: "Miembro creado correctamente" });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    mutationFn: (data: any) => fetch("/api/members", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Miembro creado" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }
 
 export function useUpdateMember() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   const { toast } = useToast();
-
   return useMutation({
-    mutationFn: async ({ id, ...data }: { id: number } & UpdateMemberRequest) => {
-      const url = buildUrl(api.members.update.path, { id });
-      const res = await fetch(url, {
-        method: api.members.update.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-        credentials: "include",
-      });
-
-      if (!res.ok) throw new Error("Error al actualizar miembro");
-      return api.members.update.responses[200].parse(await res.json());
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.members.list.path] });
-      toast({ title: "Éxito", description: "Miembro actualizado" });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    mutationFn: ({ id, ...data }: { id: number } & any) => fetch(`/api/members/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Miembro actualizado" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }
 
 export function useAddSessions() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   const { toast } = useToast();
-
   return useMutation({
-    mutationFn: async ({ id, sessions }: { id: number; sessions: number }) => {
-      const url = buildUrl(api.members.addSessions.path, { id });
-      const res = await fetch(url, {
-        method: api.members.addSessions.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessions }),
-        credentials: "include",
-      });
-
-      if (!res.ok) throw new Error("Error al agregar sesiones");
-      return api.members.addSessions.responses[200].parse(await res.json());
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.members.list.path] });
-      toast({ title: "Éxito", description: "Sesiones agregadas correctamente" });
-    },
-    onError: (error) => {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
-    },
+    mutationFn: ({ id, sessions }: { id: number; sessions: number }) => fetch(`/api/members/${id}/sessions`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessions }), credentials: "include" }).then(json),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Sesiones agregadas" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }
 
 export function useDeleteMember() {
-  const queryClient = useQueryClient();
+  const qc = useQueryClient();
   const { toast } = useToast();
-
   return useMutation({
-    mutationFn: async (id: number) => {
-      const url = buildUrl(api.members.delete.path, { id });
-      const res = await fetch(url, { 
-        method: api.members.delete.method,
-        credentials: "include" 
-      });
-
-      if (!res.ok) throw new Error("Error al eliminar miembro");
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [api.members.list.path] });
-      toast({ title: "Éxito", description: "Miembro eliminado" });
-    },
+    mutationFn: (id: number) => fetch(`/api/members/${id}`, { method: "DELETE", credentials: "include" }).then(r => { if (!r.ok) throw new Error("Error al eliminar"); }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); toast({ title: "Miembro eliminado" }); },
   });
 }
 
-
-// === Check-In Hooks ===
-
+// Check-ins
 export function useCheckIns() {
-  return useQuery({
-    queryKey: [api.checkIns.list.path],
-    queryFn: async () => {
-      const res = await fetch(api.checkIns.list.path, { credentials: "include" });
-      if (res.status === 401) throw new Error("Unauthorized");
-      if (!res.ok) throw new Error("Failed to fetch check-ins");
-      return api.checkIns.list.responses[200].parse(await res.json());
-    },
+  return useQuery<(CheckIn & { member: Member })[]>({
+    queryKey: ["/api/check-ins"],
+    queryFn: () => fetch("/api/check-ins", { credentials: "include" }).then(json),
+  });
+}
+
+export function useMyCheckIns() {
+  return useQuery<CheckIn[]>({
+    queryKey: ["/api/me/check-ins"],
+    queryFn: () => fetch("/api/me/check-ins", { credentials: "include" }).then(json),
   });
 }
 
 export function useKioskCheckIn() {
-  const queryClient = useQueryClient();
-  
+  const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (memberId: string) => {
-      const res = await fetch(api.checkIns.create.path, {
-        method: api.checkIns.create.method,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ memberId }),
-      });
+    mutationFn: (memberId: string) => fetch("/api/check-ins", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ memberId }) }).then(json),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/check-ins"] }); qc.invalidateQueries({ queryKey: ["/api/members"] }); },
+  });
+}
 
-      const data = await res.json();
+// Payments
+export function useCreatePayment() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (data: InsertPayment) => fetch("/api/payments", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/members"] }); qc.invalidateQueries({ queryKey: ["/api/payments"] }); toast({ title: "Pago registrado" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
 
-      if (!res.ok) {
-        if (res.status === 400 || res.status === 404) {
-          throw new Error(data.message || "Check-in failed");
-        }
-        throw new Error("System error");
-      }
-      
-      return api.checkIns.create.responses[200].parse(data);
-    },
-    onSuccess: () => {
-      // Invalidate both lists so admin dashboard updates in real-time if open
-      queryClient.invalidateQueries({ queryKey: [api.checkIns.list.path] });
-      queryClient.invalidateQueries({ queryKey: [api.members.list.path] });
-    },
+export function useMemberPayments(memberId: number) {
+  return useQuery<Payment[]>({
+    queryKey: [`/api/members/${memberId}/payments`],
+    queryFn: () => fetch(`/api/members/${memberId}/payments`, { credentials: "include" }).then(json),
+    enabled: !!memberId,
+  });
+}
+
+// Workouts
+export function useAllWorkouts() {
+  return useQuery<Workout[]>({
+    queryKey: ["/api/workouts"],
+    queryFn: () => fetch("/api/workouts", { credentials: "include" }).then(json),
+  });
+}
+
+export function useWorkoutToday() {
+  return useQuery<Workout | null>({
+    queryKey: ["/api/me/workout-today"],
+    queryFn: () => fetch("/api/me/workout-today", { credentials: "include" }).then(json),
+  });
+}
+
+export function useUpsertWorkout() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ day, data }: { day: number; data: UpsertWorkout }) => fetch(`/api/workouts/${day}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data), credentials: "include" }).then(json),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/workouts"] }); toast({ title: "Rutina guardada" }); },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
+
+export function useDeleteWorkout() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (day: number) => fetch(`/api/workouts/${day}`, { method: "DELETE", credentials: "include" }).then(r => { if (!r.ok) throw new Error("Error"); }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/workouts"] }),
   });
 }

@@ -4,7 +4,7 @@ import { CheckCircle2, XCircle, ChevronRight, Hash } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import gymLogo from '@assets/Diseño_sin_título_(1)_1773984151411.png';
+import gymLogo from '@assets/asgard-logo.png';
 
 export default function KioskPage() {
   const [memberId, setMemberId] = useState('');
@@ -172,12 +172,22 @@ export default function KioskPage() {
             <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-2">ACCESO CONCEDIDO</h2>
             <p className="text-xl md:text-2xl text-green-400 mb-8 font-medium">¡Bienvenido de nuevo, {result?.member?.firstName}!</p>
             
-            <div className="bg-secondary/50 rounded-2xl p-8 border border-white/5">
-              <p className="text-muted-foreground text-lg mb-2 uppercase tracking-widest font-semibold text-xs">Sesiones Restantes</p>
-              <p className="text-6xl font-bold text-white">{result?.remainingSessions}</p>
-            </div>
+            {result?.isUnlimited ? (
+              <div className="bg-primary/10 rounded-2xl p-8 border border-primary/20">
+                <p className="text-muted-foreground text-xs mb-2 uppercase tracking-widest font-semibold">Membresía</p>
+                <p className="text-5xl font-bold text-primary">ILIMITADA ∞</p>
+              </div>
+            ) : (
+              <div className={`rounded-2xl p-8 border ${result?.lastSessionWarning ? 'bg-orange-500/10 border-orange-500/30' : 'bg-secondary/50 border-white/5'}`}>
+                <p className="text-muted-foreground text-xs mb-2 uppercase tracking-widest font-semibold">Sesiones Restantes</p>
+                <p className={`text-6xl font-bold ${result?.lastSessionWarning ? 'text-orange-400' : 'text-white'}`}>{result?.remainingSessions}</p>
+                {result?.lastSessionWarning && (
+                  <p className="text-orange-400 text-sm mt-2 font-medium">⚠ Esta es tu última sesión</p>
+                )}
+              </div>
+            )}
 
-            
+
             <div className="mt-8 h-1 w-full bg-secondary rounded-full overflow-hidden">
               <motion.div 
                 className="h-full bg-green-500"
