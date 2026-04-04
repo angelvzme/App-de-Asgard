@@ -83,8 +83,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Invalidate auth cache and redirect
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      // Set auth cache directly so protected routes see user immediately
+      queryClient.setQueryData(["/api/auth/me"], data);
       navigate(data.role === "admin" ? "/admin" : "/member");
     } catch {
       setError("Error de conexión. Intenta de nuevo.");
