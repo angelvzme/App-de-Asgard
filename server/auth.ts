@@ -77,7 +77,14 @@ export async function loginHandler(req: Request, res: Response) {
     role: isAdmin ? "admin" : "member",
   };
 
-  res.json(req.session.user);
+  // Explicitly save session before responding to avoid race conditions
+  req.session.save((err) => {
+    if (err) {
+      console.error("Session save error:", err);
+      return res.status(500).json({ message: "Error al guardar sesión" });
+    }
+    res.json(req.session.user);
+  });
 }
 
 export function logoutHandler(req: Request, res: Response) {

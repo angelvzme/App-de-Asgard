@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
+import MemoryStore from "memorystore";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
@@ -8,24 +9,13 @@ import { seedDatabase } from "./seed";
 const app = express();
 const httpServer = createServer(app);
 
-// Trust Railway's reverse proxy so secure cookies work correctly
+// Trust Railway/Heroku reverse proxy so HTTPS cookies work correctly
 app.set('trust proxy', 1);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-// Session store: pg-backed in production, memory in dev
-async function createSessionStore() {
-  if (process.env.NODE_ENV === "production" && process.env.DATABASE_URL) {
-    const connectPgSimple = (await import("connect-pg-simple")).default;
-    const { pool } = await import("./db");
-    const PgStore = connectPgSimple(session);
-    return new PgStore({ pool, createTableIfMissing: true });
-  }
-  const MemoryStore = (await import("memorystore")).default;
-  const Store = MemoryStore(session);
-  return new Store({ checkPeriod: 86400000 });
-}
+const SessionStore = MemoryStore(session);
 
 export function log(message: string, source = "express") {
   const t = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
@@ -33,16 +23,15 @@ export function log(message: string, source = "express") {
 }
 
 (async () => {
-  const store = await createSessionStore();
-
   app.use(session({
     secret: process.env.SESSION_SECRET || "asgard-gym-2026",
     resave: false,
     saveUninitialized: false,
-    store,
+    store: new SessionStore({ checkPeriod: 86400000 }),
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
+      sameSite: "lax",
       maxAge: 7 * 24 * 60 * 60 * 1000,
     },
   }));
