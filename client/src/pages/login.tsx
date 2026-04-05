@@ -113,7 +113,7 @@ export default function LoginPage() {
               className="h-14 w-auto drop-shadow-[0_0_12px_rgba(220,38,38,0.6)]"
             />
             <span className="font-display text-4xl font-black tracking-tighter text-foreground">
-              ASGARD
+              Asgard Gym App
             </span>
           </div>
           <p className="text-muted-foreground text-sm tracking-widest uppercase">

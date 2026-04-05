@@ -219,7 +219,7 @@ export default function MemberDashboard() {
         <div className="max-w-lg mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src={gymLogo} alt="Asgard" className="h-8 w-auto drop-shadow-[0_0_6px_rgba(220,38,38,0.4)]" />
-            <span className="font-display text-xl font-bold tracking-tighter">ASGARD</span>
+            <span className="font-display text-xl font-bold tracking-tighter">Asgard Gym App</span>
           </div>
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-white" onClick={() => logout()} disabled={isLoggingOut}>
             <LogOut className="h-4 w-4 mr-1" />Salir

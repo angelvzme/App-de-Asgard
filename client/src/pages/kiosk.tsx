@@ -91,7 +91,7 @@ export default function KioskPage() {
                 />
               </div>
               <h1 className="text-4xl md:text-6xl font-display font-bold text-white mb-3 tracking-tight">
-                BIENVENIDO A <span className="text-primary">ASGARD</span>
+                BIENVENIDO A <span className="text-primary">ASGARD GYM</span>
               </h1>
               <p className="text-xl text-muted-foreground">Ingresa tu ID de Miembro para iniciar sesión</p>
             </div>
@@ -225,7 +225,7 @@ export default function KioskPage() {
       </AnimatePresence>
 
       <div className="absolute bottom-6 text-xs text-muted-foreground/30 font-mono">
-        ASGARD GYM SYSTEMS v1.0
+        ASGARD GYM APP v1.0
       </div>
     </div>
   );

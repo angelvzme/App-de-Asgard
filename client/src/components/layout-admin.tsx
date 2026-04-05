@@ -42,7 +42,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         <div className="flex flex-col flex-grow pt-5 overflow-y-auto">
           <div className="flex items-center flex-shrink-0 px-6 mb-8">
             <img src={gymLogo} alt="Asgard" className="h-10 w-auto mr-3 drop-shadow-[0_0_8px_rgba(220,38,38,0.5)]" />
-            <span className="font-display text-2xl font-bold tracking-tighter">ASGARD</span>
+            <span className="font-display text-2xl font-bold tracking-tighter">Asgard Gym App</span>
           </div>
           <div className="flex-1 flex flex-col px-4 space-y-1">
             <NavLinks />
@@ -68,7 +68,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       <div className="md:hidden fixed top-0 left-0 right-0 z-40 bg-card/80 backdrop-blur-md border-b border-border h-16 flex items-center justify-between px-4">
         <div className="flex items-center gap-2">
           <img src={gymLogo} alt="Asgard" className="h-8 w-auto drop-shadow-[0_0_6px_rgba(220,38,38,0.5)]" />
-          <span className="font-display text-lg font-bold">ASGARD</span>
+          <span className="font-display text-lg font-bold">Asgard Gym App</span>
         </div>
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild><Button variant="ghost" size="icon"><Menu className="h-6 w-6" /></Button></SheetTrigger>
@@ -77,7 +77,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <div className="px-6 mb-6 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <img src={gymLogo} alt="Asgard" className="h-8 w-auto drop-shadow-[0_0_6px_rgba(220,38,38,0.5)]" />
-                  <span className="font-display text-xl font-bold">ASGARD</span>
+                  <span className="font-display text-xl font-bold">Asgard Gym App</span>
                 </div>
                 <Button variant="ghost" size="icon" onClick={() => setIsOpen(false)}><X className="h-5 w-5" /></Button>
               </div>
