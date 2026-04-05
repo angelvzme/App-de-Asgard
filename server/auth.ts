@@ -1,7 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "./storage";
 
-const ADMIN_IDS = ["1001", "1002"];
+const ADMIN_IDS = ["1001", "1002", "1003", "1004"];
 const ADMIN_PASSWORD = "asgard2026";
 
 declare module "express-session" {

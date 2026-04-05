@@ -81,6 +81,8 @@ export async function seedDatabase() {
   for (const admin of [
     { memberId: "1001", firstName: "Admin", lastName: "Asgard" },
     { memberId: "1002", firstName: "Maestro", lastName: "Asgard" },
+    { memberId: "1003", firstName: "Admin", lastName: "3" },
+    { memberId: "1004", firstName: "Admin", lastName: "4" },
   ]) {
     const [existing] = await db.select().from(members).where(eq(members.memberId, admin.memberId));
     if (!existing) {
