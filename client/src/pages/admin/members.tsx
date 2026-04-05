@@ -74,15 +74,17 @@ function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
 
 function EditMemberDialog({ member, open, onOpenChange }: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
   const update = useUpdateMember();
+  const isUnlimited = member.isSpecialUser || member.membershipType === "unlimited";
   const [form, setForm] = useState({
     firstName: member.firstName, lastName: member.lastName, memberId: member.memberId,
     email: member.email || "", phone: member.phone || "", membershipType: member.membershipType || "sessions",
     birthDate: member.birthDate || "", notes: member.notes || "", active: member.active,
+    remainingSessions: member.remainingSessions,
   });
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    update.mutate({ id: member.id, ...form }, { onSuccess: () => onOpenChange(false) });
+    update.mutate({ id: member.id, ...form, remainingSessions: Number(form.remainingSessions) }, { onSuccess: () => onOpenChange(false) });
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,11 +101,24 @@ function EditMemberDialog({ member, open, onOpenChange }: { member: Member; open
             <div className="space-y-1"><Label>Email</Label><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} /></div>
           </div>
           {!member.isSpecialUser && (
-            <div className="space-y-1"><Label>Tipo de Membresía</Label>
-              <Select value={form.membershipType} onValueChange={v => set("membershipType", v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent><SelectItem value="sessions">Sesiones</SelectItem><SelectItem value="monthly">Mensual</SelectItem><SelectItem value="unlimited">Ilimitada</SelectItem></SelectContent>
-              </Select>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label>Tipo de Membresía</Label>
+                <Select value={form.membershipType} onValueChange={v => set("membershipType", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="sessions">Sesiones</SelectItem><SelectItem value="monthly">Mensual</SelectItem><SelectItem value="unlimited">Ilimitada</SelectItem></SelectContent>
+                </Select>
+              </div>
+              {!isUnlimited && (
+                <div className="space-y-1">
+                  <Label>Sesiones restantes</Label>
+                  <Input
+                    type="number" min={0}
+                    value={form.remainingSessions}
+                    onChange={e => set("remainingSessions", e.target.value)}
+                    className="font-mono"
+                  />
+                </div>
+              )}
             </div>
           )}
           <div className="space-y-1"><Label>Fecha de Nacimiento</Label><Input type="date" value={form.birthDate} onChange={e => set("birthDate", e.target.value)} /></div>

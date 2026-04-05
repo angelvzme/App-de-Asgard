@@ -115,7 +115,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.put("/api/members/:id", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const id = Number(req.params.id);
-      const input = insertMemberSchema.partial().parse(req.body);
+      const input = insertMemberSchema.partial()
+        .extend({ remainingSessions: z.number().int().min(0).optional() })
+        .parse(req.body);
       const member = await storage.getMember(id);
       if (!member) return res.status(404).json({ message: "No encontrado" });
       if (input.memberId && input.memberId !== member.memberId) {
