@@ -1,5 +1,5 @@
 import { useMembers, useCheckIns } from "@/hooks/use-members";
-import { Users, UserCheck, Activity, TrendingUp } from "lucide-react";
+import { Users, UserCheck, Activity, UserX } from "lucide-react";
 import { format } from "date-fns";
 import { 
   BarChart, 
@@ -50,7 +50,7 @@ export default function Dashboard() {
   const today = new Date().toDateString();
   const checkInsToday = checkIns?.filter(c => new Date(c.checkInTime).toDateString() === today).length || 0;
   
-  const totalSessionsRemaining = members?.reduce((acc, curr) => acc + curr.remainingSessions, 0) || 0;
+  const inactiveMembers = members?.filter(m => !m.isSpecialUser && m.membershipType === "sessions" && m.remainingSessions === 0).length || 0;
 
   // Prepare chart data (Last 7 days check-ins)
   const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -93,10 +93,10 @@ export default function Dashboard() {
           icon={Activity} 
           trend="En vivo"
         />
-        <StatCard 
-          title="Pasivo de Sesiones" 
-          value={totalSessionsRemaining} 
-          icon={TrendingUp} 
+        <StatCard
+          title="Miembros sin sesiones"
+          value={inactiveMembers}
+          icon={UserX}
         />
       </div>
 
