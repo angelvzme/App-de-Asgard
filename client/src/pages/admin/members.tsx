@@ -1,109 +1,316 @@
-import { useState } from "react";
-import { useMembers, useCreateMember, useUpdateMember, useAddSessions, useDeleteMember } from "@/hooks/use-members";
-import { 
-  Table, 
-  TableBody, 
-  TableCell, 
-  TableHead, 
-  TableHeader, 
-  TableRow 
-} from "@/components/ui/table";
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
-  DialogTrigger,
-  DialogFooter
-} from "@/components/ui/dialog";
+import { useState, useEffect, useRef } from "react";
+import {
+  useMembers, useCreateMember, useUpdateMember, useDeleteMember, useCreatePayment,
+  useAssignWorkout, useMemberActiveWorkouts, useUpdateAssignedWorkout, useDeleteAssignedWorkout,
+  useNextMemberId, useCheckMemberId,
+  type ActiveMemberWorkout,
+} from "@/hooks/use-members";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Search, Plus, MoreHorizontal, Pencil, Trash, UserPlus } from "lucide-react";
-import { 
-  DropdownMenu, 
-  DropdownMenuContent, 
-  DropdownMenuItem, 
-  DropdownMenuTrigger,
-  DropdownMenuSeparator
-} from "@/components/ui/dropdown-menu";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Search, Plus, MoreHorizontal, Pencil, Trash, MessageCircle, CreditCard, Shield, Dumbbell, ClipboardList } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import AdminLayout from "@/components/layout-admin";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { insertMemberSchema } from "@shared/schema";
-import type { InsertMember } from "@shared/schema";
-import { z } from "zod";
+import { format } from "date-fns";
+import { es } from "date-fns/locale";
+import type { WorkoutBlock, Exercise } from "@shared/schema";
+import type { Member } from "@shared/schema";
 
-// === Add Member Dialog ===
-function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
-  const createMember = useCreateMember();
-  const form = useForm<InsertMember>({
-    resolver: zodResolver(insertMemberSchema),
-    defaultValues: {
-      firstName: "",
-      lastName: "",
-      memberId: "",
-      email: "",
-      phone: "",
-      initialSessions: 10,
-    },
+const MEMBERSHIP_LABELS: Record<string, string> = { sessions: "Sesiones", monthly: "Mensual", unlimited: "Ilimitada" };
+
+function MembershipBadge({ type }: { type: string }) {
+  const colors: Record<string, string> = { sessions: "bg-blue-500/10 text-blue-400", monthly: "bg-purple-500/10 text-purple-400", unlimited: "bg-yellow-500/10 text-yellow-400" };
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${colors[type] || colors.sessions}`}>{MEMBERSHIP_LABELS[type] || type}</span>;
+}
+
+function SessionsBadge({ n, isUnlimited }: { n: number; isUnlimited: boolean }) {
+  if (isUnlimited) return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-500/10 text-yellow-400">∞</span>;
+  const color = n === 0 ? "bg-red-500/10 text-red-400" : n === 1 ? "bg-orange-500/10 text-orange-400" : "bg-green-500/10 text-green-400";
+  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${color}`}>{n}</span>;
+}
+
+function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const create = useCreateMember();
+  const emptyForm = { firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 0, membershipType: "sessions", birthDate: "", notes: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [memberIdTouched, setMemberIdTouched] = useState(false);
+  const [checkIdInput, setCheckIdInput] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: nextIdData } = useNextMemberId(open);
+  const { data: checkData, isFetching: isCheckingId } = useCheckMemberId(checkIdInput, checkIdInput.length > 0);
+
+  // Auto-fill memberId when dialog opens
+  useEffect(() => {
+    if (open && nextIdData?.nextId && !memberIdTouched) {
+      setForm(p => ({ ...p, memberId: nextIdData.nextId }));
+    }
+  }, [open, nextIdData]);
+
+  // Reset on close
+  useEffect(() => {
+    if (!open) {
+      setForm(emptyForm);
+      setMemberIdTouched(false);
+      setCheckIdInput("");
+    }
+  }, [open]);
+
+  const handleMemberIdChange = (v: string) => {
+    setForm(p => ({ ...p, memberId: v }));
+    setMemberIdTouched(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setCheckIdInput(v), 500);
+  };
+
+  const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
+
+  const idUnavailable = checkIdInput === form.memberId && checkData?.available === false;
+  const canSubmit = !create.isPending && !idUnavailable && form.memberId.trim().length > 0;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    create.mutate({ ...form, active: true, initialSessions: Number(form.initialSessions) || 0 }, {
+      onSuccess: () => { onOpenChange(false); },
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px] bg-card border-border max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle className="font-display">Agregar Nuevo Miembro</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="space-y-1">
+            <Label>ID de Miembro <span className="text-primary text-xs">(requerido)</span></Label>
+            <Input
+              value={form.memberId}
+              onChange={e => handleMemberIdChange(e.target.value)}
+              placeholder="Ej: 1007"
+              required
+              className={idUnavailable ? "border-red-500 focus-visible:ring-red-500" : ""}
+            />
+            {idUnavailable && (
+              <p className="text-xs text-red-400">Este ID ya está en uso</p>
+            )}
+            {isCheckingId && (
+              <p className="text-xs text-muted-foreground">Verificando disponibilidad...</p>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><Label>Nombre</Label><Input value={form.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Opcional" /></div>
+            <div className="space-y-1"><Label>Apellido</Label><Input value={form.lastName} onChange={e => set("lastName", e.target.value)} placeholder="Opcional" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><Label>Teléfono</Label><Input value={form.phone} onChange={e => set("phone", e.target.value)} placeholder="Opcional" /></div>
+            <div className="space-y-1"><Label>Email</Label><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} placeholder="Opcional" /></div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><Label>Tipo de Membresía</Label>
+              <Select value={form.membershipType} onValueChange={v => set("membershipType", v)}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent><SelectItem value="sessions">Sesiones</SelectItem><SelectItem value="monthly">Mensual</SelectItem><SelectItem value="unlimited">Ilimitada</SelectItem></SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1"><Label>Sesiones Iniciales</Label><Input type="number" value={form.initialSessions} onChange={e => set("initialSessions", e.target.value)} placeholder="0" /></div>
+          </div>
+          <div className="space-y-1"><Label>Fecha de Nacimiento</Label><Input type="date" value={form.birthDate} onChange={e => set("birthDate", e.target.value)} /></div>
+          <div className="space-y-1"><Label>Notas</Label><Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Opcional" /></div>
+          <DialogFooter><Button type="submit" disabled={!canSubmit}>{create.isPending ? "Creando..." : "Crear Miembro"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EditMemberDialog({ member, open, onOpenChange }: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const update = useUpdateMember();
+  const isUnlimited = member.isSpecialUser || member.membershipType === "unlimited";
+  const [form, setForm] = useState({
+    firstName: member.firstName, lastName: member.lastName, memberId: member.memberId,
+    email: member.email || "", phone: member.phone || "", membershipType: member.membershipType || "sessions",
+    birthDate: member.birthDate || "", notes: member.notes || "", active: member.active,
+    remainingSessions: member.remainingSessions,
   });
+  const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    update.mutate({ id: member.id, ...form, remainingSessions: Number(form.remainingSessions) }, { onSuccess: () => onOpenChange(false) });
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[480px] bg-card border-border max-h-[90vh] overflow-y-auto">
+        <DialogHeader><DialogTitle>Editar Miembro — {member.firstName} {member.lastName}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><Label>Nombre</Label><Input value={form.firstName} onChange={e => set("firstName", e.target.value)} /></div>
+            <div className="space-y-1"><Label>Apellido</Label><Input value={form.lastName} onChange={e => set("lastName", e.target.value)} /></div>
+          </div>
+          {!member.isSpecialUser && <div className="space-y-1"><Label>ID de Miembro</Label><Input value={form.memberId} onChange={e => set("memberId", e.target.value)} /></div>}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1"><Label>Teléfono</Label><Input value={form.phone} onChange={e => set("phone", e.target.value)} /></div>
+            <div className="space-y-1"><Label>Email</Label><Input type="email" value={form.email} onChange={e => set("email", e.target.value)} /></div>
+          </div>
+          {!member.isSpecialUser && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1"><Label>Tipo de Membresía</Label>
+                <Select value={form.membershipType} onValueChange={v => set("membershipType", v)}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="sessions">Sesiones</SelectItem><SelectItem value="monthly">Mensual</SelectItem><SelectItem value="unlimited">Ilimitada</SelectItem></SelectContent>
+                </Select>
+              </div>
+              {!isUnlimited && (
+                <div className="space-y-1">
+                  <Label>Sesiones restantes</Label>
+                  <Input
+                    type="number" min={0}
+                    value={form.remainingSessions}
+                    onChange={e => set("remainingSessions", e.target.value)}
+                    className="font-mono"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          <div className="space-y-1"><Label>Fecha de Nacimiento</Label><Input type="date" value={form.birthDate} onChange={e => set("birthDate", e.target.value)} /></div>
+          <div className="space-y-1"><Label>Notas internas</Label><Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} /></div>
+          <DialogFooter><Button type="submit" disabled={update.isPending}>{update.isPending ? "Guardando..." : "Guardar Cambios"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
-  const onSubmit = (data: InsertMember) => {
-    createMember.mutate(data, {
+function PaymentDialog({ member, open, onOpenChange }: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const createPayment = useCreatePayment();
+  const [form, setForm] = useState({ amount: "", paymentMethod: "Efectivo", sessions: "", note: "" });
+  const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    createPayment.mutate({
+      memberId: member.id, amount: Number(form.amount),
+      paymentMethod: form.paymentMethod as any,
+      sessions: form.sessions ? Number(form.sessions) : undefined,
+      note: form.note || undefined,
+    }, { onSuccess: () => { onOpenChange(false); setForm({ amount: "", paymentMethod: "Efectivo", sessions: "", note: "" }); } });
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[400px] bg-card border-border">
+        <DialogHeader><DialogTitle>Registrar Pago — {member.firstName}</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="space-y-1"><Label>Monto (MXN)</Label><Input type="number" placeholder="0" value={form.amount} onChange={e => set("amount", e.target.value)} required /></div>
+          <div className="space-y-1"><Label>Método de Pago</Label>
+            <Select value={form.paymentMethod} onValueChange={v => set("paymentMethod", v)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>{["Efectivo", "Transferencia", "Tarjeta", "Terminal"].map(m => <SelectItem key={m} value={m}>{m}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          {member.membershipType === "sessions" && (
+            <div className="space-y-1"><Label>Sesiones compradas (opcional)</Label><Input type="number" placeholder="10" value={form.sessions} onChange={e => set("sessions", e.target.value)} /></div>
+          )}
+          <div className="space-y-1"><Label>Nota (opcional)</Label><Input value={form.note} onChange={e => set("note", e.target.value)} /></div>
+          <DialogFooter><Button type="submit" disabled={createPayment.isPending}>{createPayment.isPending ? "Registrando..." : "Registrar Pago"}</Button></DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Assign Workout Dialog ──────────────────────────────────────────────────
+function emptyExercise(): Exercise { return { name: "", sets: 3, reps: "10", duration: "", notes: "" }; }
+function emptyBlock(): WorkoutBlock { return { title: "", exercises: [emptyExercise()] }; }
+
+function AssignWorkoutDialog({ member, open, onOpenChange }: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const assign = useAssignWorkout(member.id);
+  const [title, setTitle] = useState("");
+  const [blocks, setBlocks] = useState<WorkoutBlock[]>([emptyBlock()]);
+
+  const addBlock = () => setBlocks(p => [...p, emptyBlock()]);
+  const removeBlock = (i: number) => setBlocks(p => p.filter((_, idx) => idx !== i));
+  const updateBlock = (i: number, b: WorkoutBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
+
+  const setEx = (bi: number, ei: number, k: keyof Exercise, v: any) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.map((e, idx) => idx === ei ? { ...e, [k]: v } : e) });
+  const addEx = (bi: number) => updateBlock(bi, { ...blocks[bi], exercises: [...blocks[bi].exercises, emptyExercise()] });
+  const removeEx = (bi: number, ei: number) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.filter((_, idx) => idx !== ei) });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    assign.mutate({ title, blocks }, {
       onSuccess: () => {
         onOpenChange(false);
-        form.reset();
+        setTitle("");
+        setBlocks([emptyBlock()]);
       },
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-card border-border">
+      <DialogContent className="sm:max-w-[560px] bg-card border-border max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="font-display">Agregar Nuevo Miembro</DialogTitle>
+          <DialogTitle className="font-display">Rutina para {member.firstName} {member.lastName}</DialogTitle>
+          <p className="text-xs text-muted-foreground">Visible en su dashboard por 6 horas desde la asignación.</p>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="firstName">Nombre</Label>
-              <Input id="firstName" {...form.register("firstName")} />
-              {form.formState.errors.firstName && <span className="text-xs text-red-500">{form.formState.errors.firstName.message}</span>}
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="lastName">Apellido</Label>
-              <Input id="lastName" {...form.register("lastName")} />
-              {form.formState.errors.lastName && <span className="text-xs text-red-500">{form.formState.errors.lastName.message}</span>}
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-5 py-2">
+          <div className="space-y-1">
+            <Label>Título general</Label>
+            <Input placeholder="Ej: Rutina de Pierna Personalizada" value={title} onChange={e => setTitle(e.target.value)} required />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="memberId">ID de Miembro (Único)</Label>
-            <Input id="memberId" placeholder="Teléfono o ID personalizado" {...form.register("memberId")} />
-            {form.formState.errors.memberId && <span className="text-xs text-red-500">{form.formState.errors.memberId.message}</span>}
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input id="email" type="email" {...form.register("email")} />
+
+          {blocks.map((block, bi) => (
+            <div key={bi} className="bg-secondary/10 border border-border rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Bloque {bi + 1}</Label>
+                  <Input placeholder='Ej: "Rutina A", "Nivel intermedio"'
+                    value={block.title} onChange={e => updateBlock(bi, { ...block, title: e.target.value })} />
+                </div>
+                {blocks.length > 1 && (
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-400 self-end"
+                    onClick={() => removeBlock(bi)}><Trash className="h-4 w-4" /></Button>
+                )}
+              </div>
+
+              {block.exercises.map((ex, ei) => (
+                <div key={ei} className="bg-card border border-border/60 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Ejercicio {ei + 1}</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400"
+                      onClick={() => removeEx(bi, ei)}><Trash className="h-3 w-3" /></Button>
+                  </div>
+                  <Input placeholder="Nombre del ejercicio" value={ex.name} onChange={e => setEx(bi, ei, "name", e.target.value)} />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input type="number" placeholder="Series" value={ex.sets}
+                      onChange={e => setEx(bi, ei, "sets", Number(e.target.value))} />
+                    <Input placeholder="Reps" value={ex.reps} onChange={e => setEx(bi, ei, "reps", e.target.value)} />
+                    <Input placeholder="Duración" value={ex.duration} onChange={e => setEx(bi, ei, "duration", e.target.value)} />
+                  </div>
+                  <Input placeholder="Notas (opcional)" value={ex.notes} onChange={e => setEx(bi, ei, "notes", e.target.value)} />
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="w-full border-dashed" onClick={() => addEx(bi)}>
+                <Plus className="h-4 w-4 mr-1" /> Agregar ejercicio
+              </Button>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Teléfono</Label>
-              <Input id="phone" {...form.register("phone")} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="initialSessions">Sesiones Iniciales</Label>
-            <Input 
-              id="initialSessions" 
-              type="number" 
-              {...form.register("initialSessions", { valueAsNumber: true })} 
-            />
-            {form.formState.errors.initialSessions && <span className="text-xs text-red-500">{form.formState.errors.initialSessions.message}</span>}
-          </div>
-          <DialogFooter className="pt-4">
-            <Button type="submit" disabled={createMember.isPending}>
-              {createMember.isPending ? "Creando..." : "Crear Miembro"}
+          ))}
+
+          <Button type="button" variant="outline" className="w-full" onClick={addBlock}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar bloque
+          </Button>
+
+          <DialogFooter>
+            <Button type="submit" disabled={assign.isPending || !title.trim()}>
+              <Dumbbell className="mr-2 h-4 w-4" />
+              {assign.isPending ? "Asignando..." : "Asignar Rutina"}
             </Button>
           </DialogFooter>
         </form>
@@ -112,176 +319,323 @@ function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
   );
 }
 
-// === Edit Member Dialog ===
-function EditMemberDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const updateMember = useUpdateMember();
-  const form = useForm<InsertMember>({
-    resolver: zodResolver(insertMemberSchema),
-    defaultValues: {
-      firstName: member.firstName,
-      lastName: member.lastName,
-      memberId: member.memberId,
-      email: member.email || "",
-      phone: member.phone || "",
-    },
-  });
+// ── Edit Assigned Workout Dialog ──────────────────────────────────────────
+function EditAssignedWorkoutDialog({
+  member, assignedWorkout, open, onOpenChange,
+}: { member: Member; assignedWorkout: ActiveMemberWorkout; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const update = useUpdateAssignedWorkout(member.id);
+  const [title, setTitle] = useState(assignedWorkout.workout.title);
+  const [blocks, setBlocks] = useState<WorkoutBlock[]>((assignedWorkout.workout.blocks as WorkoutBlock[]) || [emptyBlock()]);
 
-  const onSubmit = (data: InsertMember) => {
-    updateMember.mutate({ id: member.id, ...data }, {
-      onSuccess: () => onOpenChange(false),
-    });
-  };
+  useEffect(() => {
+    if (open) {
+      setTitle(assignedWorkout.workout.title);
+      setBlocks((assignedWorkout.workout.blocks as WorkoutBlock[])?.length ? assignedWorkout.workout.blocks as WorkoutBlock[] : [emptyBlock()]);
+    }
+  }, [open, assignedWorkout]);
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px] bg-card border-border">
-        <DialogHeader>
-          <DialogTitle>Editar Miembro</DialogTitle>
-        </DialogHeader>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 py-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-firstName">Nombre</Label>
-              <Input id="edit-firstName" {...form.register("firstName")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-lastName">Apellido</Label>
-              <Input id="edit-lastName" {...form.register("lastName")} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="edit-memberId">ID de Miembro</Label>
-            <Input id="edit-memberId" {...form.register("memberId")} />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="edit-email">Email</Label>
-              <Input id="edit-email" type="email" {...form.register("email")} />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-phone">Teléfono</Label>
-              <Input id="edit-phone" {...form.register("phone")} />
-            </div>
-          </div>
-          <DialogFooter className="pt-4">
-            <Button type="submit" disabled={updateMember.isPending}>
-              Guardar Cambios
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-// === Add Sessions Dialog ===
-function AddSessionsDialog({ member, open, onOpenChange }: { member: any; open: boolean; onOpenChange: (open: boolean) => void }) {
-  const addSessions = useAddSessions();
-  const [sessions, setSessions] = useState(10);
+  const addBlock = () => setBlocks(p => [...p, emptyBlock()]);
+  const removeBlock = (i: number) => setBlocks(p => p.filter((_, idx) => idx !== i));
+  const updateBlock = (i: number, b: WorkoutBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
+  const setEx = (bi: number, ei: number, k: keyof Exercise, v: any) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.map((e, idx) => idx === ei ? { ...e, [k]: v } : e) });
+  const addEx = (bi: number) => updateBlock(bi, { ...blocks[bi], exercises: [...blocks[bi].exercises, emptyExercise()] });
+  const removeEx = (bi: number, ei: number) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.filter((_, idx) => idx !== ei) });
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    addSessions.mutate({ id: member.id, sessions }, {
+    if (!title.trim()) return;
+    update.mutate({ memberWorkoutId: assignedWorkout.id, data: { title, blocks } }, {
       onSuccess: () => onOpenChange(false),
     });
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[400px] bg-card border-border">
+      <DialogContent className="sm:max-w-[560px] bg-card border-border max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Agregar Sesiones</DialogTitle>
+          <DialogTitle className="font-display">Editar rutina — {member.firstName} {member.lastName}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-6 py-4">
-          <div className="p-4 bg-secondary/30 rounded-lg text-center">
-            <p className="text-sm text-muted-foreground mb-1">Saldo Actual</p>
-            <p className="text-3xl font-bold text-white">{member.remainingSessions}</p>
+        <form onSubmit={handleSubmit} className="space-y-5 py-2">
+          <div className="space-y-1">
+            <Label>Título general</Label>
+            <Input placeholder="Ej: Rutina de Pierna Personalizada" value={title} onChange={e => setTitle(e.target.value)} required />
           </div>
-          
-          <div className="space-y-4">
-            <Label>Sesiones a Agregar</Label>
-            <div className="grid grid-cols-3 gap-2">
-              {[5, 10, 20].map((num) => (
-                <div 
-                  key={num}
-                  onClick={() => setSessions(num)}
-                  className={`
-                    cursor-pointer p-4 rounded-xl border text-center transition-all
-                    ${sessions === num 
-                      ? 'border-primary bg-primary/10 text-primary' 
-                      : 'border-border bg-background hover:bg-secondary'}
-                  `}
-                >
-                  <span className="font-bold text-lg">+{num}</span>
+          {blocks.map((block, bi) => (
+            <div key={bi} className="bg-secondary/10 border border-border rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Bloque {bi + 1}</Label>
+                  <Input placeholder='Ej: "Rutina A"' value={block.title} onChange={e => updateBlock(bi, { ...block, title: e.target.value })} />
+                </div>
+                {blocks.length > 1 && (
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-400 self-end" onClick={() => removeBlock(bi)}><Trash className="h-4 w-4" /></Button>
+                )}
+              </div>
+              {block.exercises.map((ex, ei) => (
+                <div key={ei} className="bg-card border border-border/60 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Ejercicio {ei + 1}</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400" onClick={() => removeEx(bi, ei)}><Trash className="h-3 w-3" /></Button>
+                  </div>
+                  <Input placeholder="Nombre del ejercicio" value={ex.name} onChange={e => setEx(bi, ei, "name", e.target.value)} />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input type="number" placeholder="Series" value={ex.sets} onChange={e => setEx(bi, ei, "sets", Number(e.target.value))} />
+                    <Input placeholder="Reps" value={ex.reps} onChange={e => setEx(bi, ei, "reps", e.target.value)} />
+                    <Input placeholder="Duración" value={ex.duration} onChange={e => setEx(bi, ei, "duration", e.target.value)} />
+                  </div>
+                  <Input placeholder="Notas (opcional)" value={ex.notes} onChange={e => setEx(bi, ei, "notes", e.target.value)} />
                 </div>
               ))}
+              <Button type="button" variant="outline" size="sm" className="w-full border-dashed" onClick={() => addEx(bi)}>
+                <Plus className="h-4 w-4 mr-1" /> Agregar ejercicio
+              </Button>
             </div>
-            <div className="flex items-center space-x-2 mt-4">
-              <Input 
-                type="number" 
-                value={sessions} 
-                onChange={(e) => setSessions(parseInt(e.target.value) || 0)}
-                className="text-center font-mono text-lg"
-              />
-            </div>
-          </div>
-
+          ))}
+          <Button type="button" variant="outline" className="w-full" onClick={addBlock}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar bloque
+          </Button>
           <DialogFooter>
-            <Button type="submit" className="w-full" disabled={addSessions.isPending}>
-              {addSessions.isPending ? "Agregando..." : "Confirmar Compra"}
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="submit" disabled={update.isPending || !title.trim()}>
+              <Dumbbell className="mr-2 h-4 w-4" />
+              {update.isPending ? "Guardando..." : "Guardar Cambios"}
             </Button>
           </DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
   );
+}
+
+// ── View Assigned Workouts Dialog ─────────────────────────────────────────
+function timeRemaining(expiresAt: string | Date): string {
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (ms <= 0) return "Expirada";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  if (h > 0) return `Expira en ${h}h ${m}min`;
+  return `Expira en ${m}min`;
+}
+
+function ViewWorkoutsDialog({
+  member, open, onOpenChange,
+}: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { data: activeWorkouts, isLoading } = useMemberActiveWorkouts(member.id, open);
+  const deleteWorkout = useDeleteAssignedWorkout(member.id);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [editingWorkout, setEditingWorkout] = useState<ActiveMemberWorkout | null>(null);
+
+  // Auto-close if no workouts remain
+  useEffect(() => {
+    if (!isLoading && activeWorkouts && activeWorkouts.length === 0 && open) {
+      onOpenChange(false);
+    }
+  }, [activeWorkouts, isLoading]);
+
+  const handleDelete = (aw: ActiveMemberWorkout) => {
+    if (confirmDeleteId === aw.id) {
+      deleteWorkout.mutate(aw.id, {
+        onSuccess: () => setConfirmDeleteId(null),
+      });
+    } else {
+      setConfirmDeleteId(aw.id);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display">Rutinas asignadas — {member.firstName} {member.lastName}</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            {isLoading ? (
+              <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" /></div>
+            ) : activeWorkouts && activeWorkouts.length > 0 ? (
+              activeWorkouts.map(aw => (
+                <div key={aw.id} className="border border-border rounded-xl p-4 space-y-2 bg-secondary/10">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-sm">{aw.workout.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Asignada: {format(new Date(aw.assignedAt!), "d MMM yyyy, HH:mm", { locale: es })}
+                      </p>
+                      <p className="text-xs text-yellow-400 mt-0.5">{timeRemaining(aw.expiresAt)}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => { setConfirmDeleteId(null); setEditingWorkout(aw); }}>
+                      <Pencil className="h-3 w-3 mr-1" /> Editar
+                    </Button>
+                    {confirmDeleteId === aw.id ? (
+                      <div className="flex gap-1 flex-1">
+                        <Button size="sm" variant="destructive" className="flex-1" disabled={deleteWorkout.isPending}
+                          onClick={() => handleDelete(aw)}>
+                          {deleteWorkout.isPending ? "..." : "Confirmar"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteId(null)}>Cancelar</Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="outline" className="flex-1 text-red-400 hover:text-red-300 hover:border-red-500"
+                        onClick={() => setConfirmDeleteId(aw.id)}>
+                        <Trash className="h-3 w-3 mr-1" /> Eliminar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-6">Sin rutinas activas</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {editingWorkout && (
+        <EditAssignedWorkoutDialog
+          member={member}
+          assignedWorkout={editingWorkout}
+          open={!!editingWorkout}
+          onOpenChange={v => { if (!v) setEditingWorkout(null); }}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Member Row Actions (lazy-fetches active workouts on dropdown open) ────
+function MemberRowActions({
+  member,
+  onEdit, onPayment, onAssignWorkout, onViewWorkouts, onDelete,
+}: {
+  member: Member;
+  onEdit: () => void;
+  onPayment: () => void;
+  onAssignWorkout: () => void;
+  onViewWorkouts: () => void;
+  onDelete: () => void;
+}) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const { data: activeWorkouts } = useMemberActiveWorkouts(member.id, dropdownOpen);
+  const hasActiveWorkouts = (activeWorkouts?.length ?? 0) > 0;
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {needsWhatsApp(member) && (
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-green-500 hover:text-green-400"
+          onClick={() => sendWhatsApp(member)} title="Enviar recordatorio">
+          <MessageCircle className="h-4 w-4" />
+        </Button>
+      )}
+      <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={onEdit}><Pencil className="mr-2 h-4 w-4" />Editar</DropdownMenuItem>
+          {!member.isSpecialUser && (
+            <DropdownMenuItem onClick={onPayment}><CreditCard className="mr-2 h-4 w-4" />Registrar Pago</DropdownMenuItem>
+          )}
+          {!member.isSpecialUser && (
+            <DropdownMenuItem onClick={onAssignWorkout}><Dumbbell className="mr-2 h-4 w-4" />Asignar rutina</DropdownMenuItem>
+          )}
+          {!member.isSpecialUser && (
+            hasActiveWorkouts ? (
+              <DropdownMenuItem onClick={onViewWorkouts}>
+                <ClipboardList className="mr-2 h-4 w-4" />Ver rutinas asignadas
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled className="text-muted-foreground cursor-not-allowed">
+                <ClipboardList className="mr-2 h-4 w-4" />Sin rutinas asignadas
+              </DropdownMenuItem>
+            )
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-red-500" onClick={onDelete}><Trash className="mr-2 h-4 w-4" />Eliminar</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
+function sendWhatsApp(member: Member) {
+  if (!member.phone) return;
+  const phone = member.phone.replace(/\D/g, "");
+  let msg = "";
+  if (member.remainingSessions === 1) {
+    msg = `Hola ${member.firstName} 👋 Te recordamos que te queda *1 sola sesión* en Asgard Gym. ¡Renueva hoy para seguir entrenando sin interrupciones! 💪`;
+  } else if (member.membershipType === "monthly" && member.expiresAt) {
+    const fecha = format(new Date(member.expiresAt), "d 'de' MMMM", { locale: es });
+    msg = `Hola ${member.firstName} 👋 Tu membresía en Asgard Gym vence el *${fecha}*. ¡Renuévala para no perder tu continuidad! 💪`;
+  }
+  window.open(`https://wa.me/${phone}?text=${encodeURIComponent(msg)}`, "_blank");
+}
+
+function needsWhatsApp(m: Member) {
+  if (m.remainingSessions === 1 && m.membershipType === "sessions") return true;
+  if (m.membershipType === "monthly" && m.expiresAt) {
+    const diff = (new Date(m.expiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+    if (diff <= 3 && diff >= 0) return true;
+  }
+  return false;
 }
 
 export default function MembersPage() {
   const { data: members, isLoading } = useMembers();
   const deleteMember = useDeleteMember();
   const [search, setSearch] = useState("");
+  const [showSpecial, setShowSpecial] = useState(false);
   const [isAddOpen, setIsAddOpen] = useState(false);
-  
-  // Edit/Add Sessions State
-  const [selectedMember, setSelectedMember] = useState<any>(null);
+  const [selectedMember, setSelectedMember] = useState<Member | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [isSessionsOpen, setIsSessionsOpen] = useState(false);
+  const [isPaymentOpen, setIsPaymentOpen] = useState(false);
+  const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
+  const [isViewWorkoutsOpen, setIsViewWorkoutsOpen] = useState(false);
 
-  const filteredMembers = members?.filter(m => 
-    m.firstName.toLowerCase().includes(search.toLowerCase()) ||
-    m.lastName.toLowerCase().includes(search.toLowerCase()) ||
-    m.memberId.includes(search)
+
+  const specialMembers = members?.filter(m => m.isSpecialUser) || [];
+  const regularMembers = members?.filter(m => !m.isSpecialUser) || [];
+
+  const filtered = (showSpecial ? specialMembers : regularMembers).filter(m =>
+    `${m.firstName} ${m.lastName} ${m.memberId}`.toLowerCase().includes(search.toLowerCase())
   );
 
   const handleDelete = (id: number) => {
-    if (confirm("¿Estás seguro de que quieres eliminar a este miembro?")) {
-      deleteMember.mutate(id);
-    }
+    if (confirm("¿Eliminar este miembro?")) deleteMember.mutate(id);
   };
+
+  const openEdit = (m: Member) => { setSelectedMember(m); setIsEditOpen(true); };
+  const openPayment = (m: Member) => { setSelectedMember(m); setIsPaymentOpen(true); };
+  const openWorkout = (m: Member) => { setSelectedMember(m); setIsWorkoutOpen(true); };
+  const openViewWorkouts = (m: Member) => { setSelectedMember(m); setIsViewWorkoutsOpen(true); };
 
   return (
     <AdminLayout>
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-8 gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
         <div>
-          <h1 className="text-3xl font-display font-bold text-foreground">Miembros</h1>
-          <p className="text-muted-foreground mt-1">Gestionar membresías y sesiones del gimnasio.</p>
+          <h1 className="text-3xl font-display font-bold">Miembros</h1>
+          <p className="text-muted-foreground mt-1">Gestionar membresías y sesiones.</p>
         </div>
-        <Button onClick={() => setIsAddOpen(true)} className="bg-primary text-primary-foreground hover:bg-primary/90">
-          <Plus className="mr-2 h-4 w-4" /> Agregar Miembro
+        <Button onClick={() => setIsAddOpen(true)}><Plus className="mr-2 h-4 w-4" /> Agregar Miembro</Button>
+      </div>
+
+      {/* Filter tabs */}
+      <div className="flex gap-2 mb-4">
+        <Button variant={showSpecial ? "ghost" : "default"} size="sm" onClick={() => setShowSpecial(false)}>
+          Miembros ({regularMembers.length})
+        </Button>
+        <Button variant={showSpecial ? "default" : "ghost"} size="sm" onClick={() => setShowSpecial(true)}>
+          <Shield className="mr-1 h-3 w-3" /> Equipo Asgard ({specialMembers.length})
         </Button>
       </div>
 
       <div className="bg-card rounded-2xl border border-border shadow-sm overflow-hidden">
-        <div className="p-4 border-b border-border flex items-center gap-4">
-          <div className="relative flex-1 max-w-sm">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Buscar por nombre o ID..." 
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-10"
-            />
+        <div className="p-4 border-b border-border">
+          <div className="relative max-w-sm">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input placeholder="Buscar por nombre o ID..." value={search} onChange={e => setSearch(e.target.value)} className="pl-10" />
           </div>
         </div>
 
@@ -289,100 +643,61 @@ export default function MembersPage() {
           <Table>
             <TableHeader>
               <TableRow className="border-border hover:bg-transparent">
-                <TableHead>ID Miembro</TableHead>
+                <TableHead>ID</TableHead>
                 <TableHead>Nombre</TableHead>
-                <TableHead>Sesiones Restantes</TableHead>
-                <TableHead className="hidden md:table-cell">Total Comprado</TableHead>
+                <TableHead>Membresía</TableHead>
+                {!showSpecial && <TableHead>Sesiones</TableHead>}
+                <TableHead className="hidden lg:table-cell">Último Pago</TableHead>
                 <TableHead className="hidden md:table-cell">Contacto</TableHead>
                 <TableHead className="text-right">Acciones</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-10">
-                    <div className="flex justify-center">
-                      <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent"></div>
+                <TableRow><TableCell colSpan={7} className="text-center py-10"><div className="flex justify-center"><div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" /></div></TableCell></TableRow>
+              ) : filtered.length === 0 ? (
+                <TableRow><TableCell colSpan={7} className="text-center py-10 text-muted-foreground">No se encontraron miembros.</TableCell></TableRow>
+              ) : filtered.map(member => (
+                <TableRow key={member.id} className="border-border hover:bg-secondary/20">
+                  <TableCell className="font-mono text-sm">{member.memberId}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{member.firstName} {member.lastName}</span>
+                      {member.isSpecialUser && <Shield className="h-3 w-3 text-yellow-400" />}
                     </div>
                   </TableCell>
-                </TableRow>
-              ) : filteredMembers?.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="text-center py-10 text-muted-foreground">
-                    No se encontraron miembros.
+                  <TableCell><MembershipBadge type={member.membershipType || "sessions"} /></TableCell>
+                  {!showSpecial && (
+                    <TableCell><SessionsBadge n={member.remainingSessions} isUnlimited={member.isSpecialUser || member.membershipType === "unlimited"} /></TableCell>
+                  )}
+                  <TableCell className="hidden lg:table-cell text-muted-foreground text-sm">
+                    {member.lastPaymentDate ? format(new Date(member.lastPaymentDate), "d MMM yyyy", { locale: es }) : "—"}
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell text-muted-foreground text-sm">{member.phone || member.email || "—"}</TableCell>
+                  <TableCell className="text-right">
+                    <MemberRowActions
+                      member={member}
+                      onEdit={() => openEdit(member)}
+                      onPayment={() => openPayment(member)}
+                      onAssignWorkout={() => openWorkout(member)}
+                      onViewWorkouts={() => openViewWorkouts(member)}
+                      onDelete={() => handleDelete(member.id)}
+                    />
                   </TableCell>
                 </TableRow>
-              ) : (
-                filteredMembers?.map((member) => (
-                  <TableRow key={member.id} className="border-border hover:bg-secondary/20">
-                    <TableCell className="font-mono text-sm">{member.memberId}</TableCell>
-                    <TableCell className="font-medium text-foreground">
-                      {member.firstName} {member.lastName}
-                    </TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        member.remainingSessions > 3 
-                          ? 'bg-green-500/10 text-green-500' 
-                          : 'bg-red-500/10 text-red-500'
-                      }`}>
-                        {member.remainingSessions}
-                      </span>
-                    </TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground">{member.totalSessions}</TableCell>
-                    <TableCell className="hidden md:table-cell text-muted-foreground text-sm">
-                      {member.phone || member.email || "-"}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Abrir menú</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem onClick={() => { setSelectedMember(member); setIsSessionsOpen(true); }}>
-                            <UserPlus className="mr-2 h-4 w-4" />
-                            Agregar Sesiones
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem onClick={() => { setSelectedMember(member); setIsEditOpen(true); }}>
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Editar Detalles
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            className="text-red-500 focus:text-red-500 focus:bg-red-500/10"
-                            onClick={() => handleDelete(member.id)}
-                          >
-                            <Trash className="mr-2 h-4 w-4" />
-                            Eliminar Miembro
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
+              ))}
             </TableBody>
           </Table>
         </div>
       </div>
 
-
       <AddMemberDialog open={isAddOpen} onOpenChange={setIsAddOpen} />
-      
       {selectedMember && (
         <>
-          <EditMemberDialog 
-            member={selectedMember} 
-            open={isEditOpen} 
-            onOpenChange={setIsEditOpen} 
-          />
-          <AddSessionsDialog 
-            member={selectedMember} 
-            open={isSessionsOpen} 
-            onOpenChange={setIsSessionsOpen} 
-          />
+          <EditMemberDialog member={selectedMember} open={isEditOpen} onOpenChange={setIsEditOpen} />
+          <PaymentDialog member={selectedMember} open={isPaymentOpen} onOpenChange={setIsPaymentOpen} />
+          <AssignWorkoutDialog member={selectedMember} open={isWorkoutOpen} onOpenChange={setIsWorkoutOpen} />
+          <ViewWorkoutsDialog member={selectedMember} open={isViewWorkoutsOpen} onOpenChange={setIsViewWorkoutsOpen} />
         </>
       )}
     </AdminLayout>

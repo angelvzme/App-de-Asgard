@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Shield, Eye, EyeOff, ArrowRight, Dumbbell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import gymLogo from "@assets/Dise#U00f1o_sin_t#U00edtulo_(1)_1773984151411.png";
+import gymLogo from "@assets/asgard-logo.png";
 
 type Step = "id" | "password";
 
@@ -83,8 +83,8 @@ export default function LoginPage() {
         return;
       }
 
-      // Invalidate auth cache and redirect
-      await queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      // Set auth cache directly so protected routes see user immediately
+      queryClient.setQueryData(["/api/auth/me"], data);
       navigate(data.role === "admin" ? "/admin" : "/member");
     } catch {
       setError("Error de conexión. Intenta de nuevo.");
@@ -113,7 +113,7 @@ export default function LoginPage() {
               className="h-14 w-auto drop-shadow-[0_0_12px_rgba(220,38,38,0.6)]"
             />
             <span className="font-display text-4xl font-black tracking-tighter text-foreground">
-              ASGARD
+              Asgard Gym App
             </span>
           </div>
           <p className="text-muted-foreground text-sm tracking-widest uppercase">
