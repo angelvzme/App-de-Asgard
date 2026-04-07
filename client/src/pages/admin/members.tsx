@@ -18,8 +18,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import AdminLayout from "@/components/layout-admin";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
-import type { WorkoutBlock, Exercise } from "@shared/schema";
 import type { Member } from "@shared/schema";
+import { ExercisePicker, ExerciseItem, type LocalExercise } from "@/components/exercise-picker";
 
 const MEMBERSHIP_LABELS: Record<string, string> = { sessions: "Sesiones", monthly: "Mensual", unlimited: "Ilimitada" };
 
@@ -223,34 +223,36 @@ function PaymentDialog({ member, open, onOpenChange }: { member: Member; open: b
 }
 
 // ── Assign Workout Dialog ──────────────────────────────────────────────────
-function emptyExercise(): Exercise { return { name: "", sets: 3, reps: "10", duration: "", notes: "" }; }
-function emptyBlock(): WorkoutBlock { return { title: "", exercises: [emptyExercise()] }; }
+type LocalBlock = { title: string; exercises: LocalExercise[] };
+function emptyBlock(): LocalBlock { return { title: "", exercises: [] }; }
 
 function AssignWorkoutDialog({ member, open, onOpenChange }: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
   const assign = useAssignWorkout(member.id);
   const [title, setTitle] = useState("");
-  const [blocks, setBlocks] = useState<WorkoutBlock[]>([emptyBlock()]);
+  const [blocks, setBlocks] = useState<LocalBlock[]>([emptyBlock()]);
+
+  useEffect(() => { if (!open) { setTitle(""); setBlocks([emptyBlock()]); } }, [open]);
 
   const addBlock = () => setBlocks(p => [...p, emptyBlock()]);
   const removeBlock = (i: number) => setBlocks(p => p.filter((_, idx) => idx !== i));
-  const updateBlock = (i: number, b: WorkoutBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
-
-  const setEx = (bi: number, ei: number, k: keyof Exercise, v: any) =>
-    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.map((e, idx) => idx === ei ? { ...e, [k]: v } : e) });
-  const addEx = (bi: number) => updateBlock(bi, { ...blocks[bi], exercises: [...blocks[bi].exercises, emptyExercise()] });
-  const removeEx = (bi: number, ei: number) =>
-    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.filter((_, idx) => idx !== ei) });
+  const updateBlock = (i: number, b: LocalBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    assign.mutate({ title, blocks }, {
-      onSuccess: () => {
-        onOpenChange(false);
-        setTitle("");
-        setBlocks([emptyBlock()]);
-      },
-    });
+    const payload = {
+      title,
+      blocks: blocks.map(b => ({
+        title: b.title,
+        exercises: b.exercises.map(ex => ({
+          exerciseId: ex.exerciseId,
+          sets: ex.sets || null,
+          reps: ex.reps || null,
+          duration: ex.duration || null,
+        })),
+      })),
+    };
+    assign.mutate(payload, { onSuccess: () => onOpenChange(false) });
   };
 
   return (
@@ -281,25 +283,16 @@ function AssignWorkoutDialog({ member, open, onOpenChange }: { member: Member; o
               </div>
 
               {block.exercises.map((ex, ei) => (
-                <div key={ei} className="bg-card border border-border/60 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Ejercicio {ei + 1}</span>
-                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400"
-                      onClick={() => removeEx(bi, ei)}><Trash className="h-3 w-3" /></Button>
-                  </div>
-                  <Input placeholder="Nombre del ejercicio" value={ex.name} onChange={e => setEx(bi, ei, "name", e.target.value)} />
-                  <div className="grid grid-cols-3 gap-2">
-                    <Input type="number" placeholder="Series" value={ex.sets}
-                      onChange={e => setEx(bi, ei, "sets", Number(e.target.value))} />
-                    <Input placeholder="Reps" value={ex.reps} onChange={e => setEx(bi, ei, "reps", e.target.value)} />
-                    <Input placeholder="Duración" value={ex.duration} onChange={e => setEx(bi, ei, "duration", e.target.value)} />
-                  </div>
-                  <Input placeholder="Notas (opcional)" value={ex.notes} onChange={e => setEx(bi, ei, "notes", e.target.value)} />
-                </div>
+                <ExerciseItem
+                  key={ei}
+                  exercise={ex}
+                  onChange={updated => updateBlock(bi, { ...block, exercises: block.exercises.map((e, idx) => idx === ei ? updated : e) })}
+                  onRemove={() => updateBlock(bi, { ...block, exercises: block.exercises.filter((_, idx) => idx !== ei) })}
+                />
               ))}
-              <Button type="button" variant="outline" size="sm" className="w-full border-dashed" onClick={() => addEx(bi)}>
-                <Plus className="h-4 w-4 mr-1" /> Agregar ejercicio
-              </Button>
+              <ExercisePicker
+                onExerciseAdded={ex => updateBlock(bi, { ...block, exercises: [...block.exercises, { ...ex, sets: 3, reps: "", duration: "" }] })}
+              />
             </div>
           ))}
 
@@ -325,28 +318,46 @@ function EditAssignedWorkoutDialog({
 }: { member: Member; assignedWorkout: ActiveMemberWorkout; open: boolean; onOpenChange: (v: boolean) => void }) {
   const update = useUpdateAssignedWorkout(member.id);
   const [title, setTitle] = useState(assignedWorkout.workout.title);
-  const [blocks, setBlocks] = useState<WorkoutBlock[]>((assignedWorkout.workout.blocks as WorkoutBlock[]) || [emptyBlock()]);
+  const [blocks, setBlocks] = useState<LocalBlock[]>([]);
 
   useEffect(() => {
     if (open) {
       setTitle(assignedWorkout.workout.title);
-      setBlocks((assignedWorkout.workout.blocks as WorkoutBlock[])?.length ? assignedWorkout.workout.blocks as WorkoutBlock[] : [emptyBlock()]);
+      const lb: LocalBlock[] = assignedWorkout.workout.blocks.map(b => ({
+        title: b.title,
+        exercises: b.exercises.map(e => ({
+          exerciseId: e.exerciseId,
+          name: e.name,
+          notes: e.notes ?? null,
+          sets: e.sets ?? 3,
+          reps: e.reps ?? "",
+          duration: e.duration ?? "",
+        })),
+      }));
+      setBlocks(lb.length > 0 ? lb : [emptyBlock()]);
     }
   }, [open, assignedWorkout]);
 
   const addBlock = () => setBlocks(p => [...p, emptyBlock()]);
   const removeBlock = (i: number) => setBlocks(p => p.filter((_, idx) => idx !== i));
-  const updateBlock = (i: number, b: WorkoutBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
-  const setEx = (bi: number, ei: number, k: keyof Exercise, v: any) =>
-    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.map((e, idx) => idx === ei ? { ...e, [k]: v } : e) });
-  const addEx = (bi: number) => updateBlock(bi, { ...blocks[bi], exercises: [...blocks[bi].exercises, emptyExercise()] });
-  const removeEx = (bi: number, ei: number) =>
-    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.filter((_, idx) => idx !== ei) });
+  const updateBlock = (i: number, b: LocalBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
-    update.mutate({ memberWorkoutId: assignedWorkout.id, data: { title, blocks } }, {
+    const payload = {
+      title,
+      blocks: blocks.map(b => ({
+        title: b.title,
+        exercises: b.exercises.map(ex => ({
+          exerciseId: ex.exerciseId,
+          sets: ex.sets || null,
+          reps: ex.reps || null,
+          duration: ex.duration || null,
+        })),
+      })),
+    };
+    update.mutate({ memberWorkoutId: assignedWorkout.id, data: payload }, {
       onSuccess: () => onOpenChange(false),
     });
   };
@@ -374,23 +385,16 @@ function EditAssignedWorkoutDialog({
                 )}
               </div>
               {block.exercises.map((ex, ei) => (
-                <div key={ei} className="bg-card border border-border/60 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Ejercicio {ei + 1}</span>
-                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400" onClick={() => removeEx(bi, ei)}><Trash className="h-3 w-3" /></Button>
-                  </div>
-                  <Input placeholder="Nombre del ejercicio" value={ex.name} onChange={e => setEx(bi, ei, "name", e.target.value)} />
-                  <div className="grid grid-cols-3 gap-2">
-                    <Input type="number" placeholder="Series" value={ex.sets} onChange={e => setEx(bi, ei, "sets", Number(e.target.value))} />
-                    <Input placeholder="Reps" value={ex.reps} onChange={e => setEx(bi, ei, "reps", e.target.value)} />
-                    <Input placeholder="Duración" value={ex.duration} onChange={e => setEx(bi, ei, "duration", e.target.value)} />
-                  </div>
-                  <Input placeholder="Notas (opcional)" value={ex.notes} onChange={e => setEx(bi, ei, "notes", e.target.value)} />
-                </div>
+                <ExerciseItem
+                  key={ei}
+                  exercise={ex}
+                  onChange={updated => updateBlock(bi, { ...block, exercises: block.exercises.map((e, idx) => idx === ei ? updated : e) })}
+                  onRemove={() => updateBlock(bi, { ...block, exercises: block.exercises.filter((_, idx) => idx !== ei) })}
+                />
               ))}
-              <Button type="button" variant="outline" size="sm" className="w-full border-dashed" onClick={() => addEx(bi)}>
-                <Plus className="h-4 w-4 mr-1" /> Agregar ejercicio
-              </Button>
+              <ExercisePicker
+                onExerciseAdded={ex => updateBlock(bi, { ...block, exercises: [...block.exercises, { ...ex, sets: 3, reps: "", duration: "" }] })}
+              />
             </div>
           ))}
           <Button type="button" variant="outline" className="w-full" onClick={addBlock}>

@@ -1,6 +1,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import type { Member, CheckIn, Payment, Workout, MemberWorkout, InsertPayment, UpsertWorkout, AssignWorkout } from "@shared/schema";
+import type {
+  Member, CheckIn, Payment, MemberWorkout,
+  LibraryExercise, LibraryExerciseWithUsage,
+  WorkoutFull,
+  InsertPayment, UpsertWorkout, AssignWorkout, InsertExercise,
+} from "@shared/schema";
 
 const json = async (res: Response) => {
   const data = await res.json();
@@ -65,6 +70,24 @@ export function useDeleteMember() {
   });
 }
 
+export function useNextMemberId(enabled = true) {
+  return useQuery<{ nextId: string }>({
+    queryKey: ["/api/members/next-id"],
+    queryFn: () => fetch("/api/members/next-id", { credentials: "include" }).then(json),
+    enabled,
+    staleTime: 0,
+  });
+}
+
+export function useCheckMemberId(memberId: string, enabled = true) {
+  return useQuery<{ available: boolean }>({
+    queryKey: ["/api/members/check-id", memberId],
+    queryFn: () => fetch(`/api/members/check-id/${encodeURIComponent(memberId)}`, { credentials: "include" }).then(json),
+    enabled: enabled && memberId.trim().length > 0,
+    staleTime: 0,
+  });
+}
+
 // Check-ins
 export function useCheckIns() {
   return useQuery<(CheckIn & { member: Member })[]>({
@@ -94,7 +117,6 @@ export function useKioskCheckIn() {
   });
 }
 
-// Member self check-in (from dashboard)
 export function useMemberCheckIn() {
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -136,9 +158,73 @@ export function useMemberPayments(memberId: number) {
   });
 }
 
+// Exercise Library
+export function useExercises() {
+  return useQuery<LibraryExerciseWithUsage[]>({
+    queryKey: ["/api/exercises"],
+    queryFn: () => fetch("/api/exercises", { credentials: "include" }).then(json),
+  });
+}
+
+export function useRecentExercises() {
+  return useQuery<LibraryExercise[]>({
+    queryKey: ["/api/exercises/recent"],
+    queryFn: () => fetch("/api/exercises/recent", { credentials: "include" }).then(json),
+  });
+}
+
+export function useCreateExercise() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (data: InsertExercise) => fetch("/api/exercises", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data), credentials: "include",
+    }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/exercises"] });
+      qc.invalidateQueries({ queryKey: ["/api/exercises/recent"] });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
+
+export function useUpdateExercise() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ id, ...data }: { id: number } & Partial<InsertExercise>) =>
+      fetch(`/api/exercises/${id}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data), credentials: "include",
+      }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/exercises"] });
+      toast({ title: "Ejercicio actualizado" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
+
+export function useDeleteExercise() {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (id: number) => fetch(`/api/exercises/${id}`, {
+      method: "DELETE", credentials: "include",
+    }).then(r => { if (!r.ok) throw new Error("Error al eliminar"); }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/exercises"] });
+      qc.invalidateQueries({ queryKey: ["/api/exercises/recent"] });
+      toast({ title: "Ejercicio eliminado" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
+
 // Weekly Workouts
 export function useAllWorkouts() {
-  return useQuery<Workout[]>({
+  return useQuery<WorkoutFull[]>({
     queryKey: ["/api/workouts"],
     queryFn: () => fetch("/api/workouts", { credentials: "include" }).then(json),
   });
@@ -146,7 +232,7 @@ export function useAllWorkouts() {
 
 export function useWorkoutToday() {
   const day = new Date().getDay();
-  return useQuery<Workout | null>({
+  return useQuery<WorkoutFull | null>({
     queryKey: ["/api/workouts/day", day],
     queryFn: () => fetch(`/api/workouts/day/${day}`, { credentials: "include" }).then(json),
   });
@@ -163,6 +249,7 @@ export function useUpsertWorkout() {
       }).then(json),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/workouts"] });
+      qc.invalidateQueries({ queryKey: ["/api/exercises/recent"] });
       toast({ title: "Rutina guardada" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -181,7 +268,7 @@ export function useDeleteWorkout() {
 
 // Personalized Workouts
 export function useMyPersonalWorkouts() {
-  return useQuery<Workout[]>({
+  return useQuery<WorkoutFull[]>({
     queryKey: ["/api/me/workouts"],
     queryFn: () => fetch("/api/me/workouts", { credentials: "include" }).then(json),
   });
@@ -197,13 +284,14 @@ export function useAssignWorkout(memberId: number) {
     }).then(json),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [`/api/members/${memberId}/workouts`] });
+      qc.invalidateQueries({ queryKey: ["/api/exercises/recent"] });
       toast({ title: "Rutina asignada", description: "El miembro verá la rutina en su dashboard por 6 horas." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 }
 
-export type ActiveMemberWorkout = MemberWorkout & { workout: Workout };
+export type ActiveMemberWorkout = MemberWorkout & { workout: WorkoutFull };
 
 export function useMemberActiveWorkouts(memberId: number, enabled = true) {
   return useQuery<ActiveMemberWorkout[]>({
@@ -224,6 +312,7 @@ export function useUpdateAssignedWorkout(memberId: number) {
       }).then(json),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [`/api/members/${memberId}/workouts`] });
+      qc.invalidateQueries({ queryKey: ["/api/exercises/recent"] });
       toast({ title: "Rutina actualizada" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -243,23 +332,5 @@ export function useDeleteAssignedWorkout(memberId: number) {
       toast({ title: "Rutina eliminada" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-}
-
-export function useNextMemberId(enabled = true) {
-  return useQuery<{ nextId: string }>({
-    queryKey: ["/api/members/next-id"],
-    queryFn: () => fetch("/api/members/next-id", { credentials: "include" }).then(json),
-    enabled,
-    staleTime: 0,
-  });
-}
-
-export function useCheckMemberId(memberId: string, enabled = true) {
-  return useQuery<{ available: boolean }>({
-    queryKey: ["/api/members/check-id", memberId],
-    queryFn: () => fetch(`/api/members/check-id/${encodeURIComponent(memberId)}`, { credentials: "include" }).then(json),
-    enabled: enabled && memberId.trim().length > 0,
-    staleTime: 0,
   });
 }

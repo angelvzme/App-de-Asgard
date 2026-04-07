@@ -9,7 +9,8 @@ import { LogOut, Dumbbell, Clock, TrendingUp, CheckCircle2, Flame, Calendar, Zap
 import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import gymLogo from "@assets/asgard-logo.png";
-import type { CheckIn, Member, Workout, WorkoutBlock } from "@shared/schema";
+import type { CheckIn, Member, WorkoutFull, WorkoutBlockItem } from "@shared/schema";
+import { renderNotesWithLinks } from "@/components/exercise-picker";
 
 function useMyProfile() {
   return useQuery<Member>({
@@ -58,7 +59,7 @@ function AttendanceChart({ checkIns }: { checkIns: CheckIn[] }) {
   );
 }
 
-function BlocksList({ blocks }: { blocks: WorkoutBlock[] }) {
+function BlocksList({ blocks }: { blocks: WorkoutBlockItem[] }) {
   if (!blocks || blocks.length === 0)
     return <p className="text-sm text-muted-foreground">No hay ejercicios configurados.</p>;
   return (
@@ -75,11 +76,11 @@ function BlocksList({ blocks }: { blocks: WorkoutBlock[] }) {
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">{ex.name}</p>
                   <div className="flex flex-wrap gap-2 mt-1">
-                    {ex.sets > 0 && <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded">{ex.sets} series</span>}
+                    {(ex.sets ?? 0) > 0 && <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded">{ex.sets} series</span>}
                     {ex.reps && <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded">{ex.reps} reps</span>}
                     {ex.duration && <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded">{ex.duration}</span>}
                   </div>
-                  {ex.notes && <p className="text-xs text-muted-foreground mt-1">{ex.notes}</p>}
+                  {ex.notes && <p className="text-xs text-muted-foreground mt-1 break-words">{renderNotesWithLinks(ex.notes)}</p>}
                 </div>
               </div>
             ))}
@@ -90,7 +91,7 @@ function BlocksList({ blocks }: { blocks: WorkoutBlock[] }) {
   );
 }
 
-function WorkoutCard({ workout }: { workout: Workout | null | undefined }) {
+function WorkoutCard({ workout }: { workout: WorkoutFull | null | undefined }) {
   if (workout === undefined) return <div className="h-32 animate-pulse bg-secondary/50 rounded-xl" />;
   if (!workout) return (
     <div className="text-center py-8 text-muted-foreground">
@@ -102,7 +103,7 @@ function WorkoutCard({ workout }: { workout: Workout | null | undefined }) {
   return (
     <div className="space-y-3">
       <h3 className="font-bold text-foreground">{workout.title}</h3>
-      <BlocksList blocks={workout.blocks as WorkoutBlock[] || []} />
+      <BlocksList blocks={workout.blocks} />
     </div>
   );
 }
@@ -301,7 +302,7 @@ export default function MemberDashboard() {
             {personalWorkouts.map((w, i) => (
               <div key={w.id} className="bg-card border border-yellow-500/20 rounded-2xl p-5">
                 <h3 className="font-bold text-foreground mb-3">{w.title}</h3>
-                <BlocksList blocks={w.blocks as WorkoutBlock[] || []} />
+                <BlocksList blocks={w.blocks} />
               </div>
             ))}
           </motion.div>

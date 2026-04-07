@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import { z } from "zod";
 import {
   insertMemberSchema, kioskCheckInSchema, insertPaymentSchema,
-  upsertWorkoutSchema, assignWorkoutSchema,
+  upsertWorkoutSchema, assignWorkoutSchema, insertExerciseSchema,
 } from "@shared/schema";
 import { checkMemberHandler, loginHandler, logoutHandler, meHandler, isAuthenticated, isAdmin } from "./auth";
 
@@ -45,7 +45,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!isUnlimited && member.remainingSessions <= 0)
         return res.status(400).json({ message: "Sin sesiones disponibles. Renueva tu membresía." });
 
-      // Enforce 6-hour cooldown
       const checkIns = await storage.getMemberCheckIns(member.id);
       if (checkIns.length > 0) {
         const last = new Date(checkIns[0].checkInTime).getTime();
@@ -90,6 +89,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
       console.error(err);
+      res.status(500).json({ message: "Error interno" });
+    }
+  });
+
+  // ── Admin — Exercise Library ───────────────────────────────────────────────
+  app.get("/api/exercises", isAuthenticated, isAdmin, async (_req, res) => {
+    res.json(await storage.getExercises());
+  });
+  app.get("/api/exercises/recent", isAuthenticated, isAdmin, async (_req, res) => {
+    res.json(await storage.getRecentExercises());
+  });
+  app.post("/api/exercises", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const input = insertExerciseSchema.parse(req.body);
+      res.status(201).json(await storage.createExercise(input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Error interno" });
+    }
+  });
+  app.put("/api/exercises/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      const input = insertExerciseSchema.partial().parse(req.body);
+      res.json(await storage.updateExercise(id, input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Error interno" });
+    }
+  });
+  app.delete("/api/exercises/:id", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await storage.deleteExercise(Number(req.params.id));
+      res.status(204).send();
+    } catch (err) {
       res.status(500).json({ message: "Error interno" });
     }
   });
@@ -158,7 +192,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.status(204).send();
   });
 
-  // Admin — assign personalized workout to a member
+  // Admin — assign / view / edit / delete personalized workout
   app.post("/api/members/:id/workouts", isAuthenticated, isAdmin, async (req, res) => {
     try {
       const memberId = Number(req.params.id);
@@ -212,7 +246,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     res.json(await storage.getMemberPayments(Number(req.params.id)));
   });
 
-  // ── Workouts (weekly, readable by authenticated, writable by admin) ────────
+  // ── Workouts (weekly) ──────────────────────────────────────────────────────
   app.get("/api/workouts", isAuthenticated, async (_req, res) => res.json(await storage.getAllWorkouts()));
   app.get("/api/workouts/day/:day", isAuthenticated, async (req, res) => {
     const w = await storage.getWorkout(Number(req.params.day));
