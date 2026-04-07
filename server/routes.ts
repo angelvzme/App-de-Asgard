@@ -96,6 +96,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Admin — Members ───────────────────────────────────────────────────────
   app.get("/api/members", isAuthenticated, isAdmin, async (_req, res) => res.json(await storage.getMembers()));
+
+  // Must be before /:id
+  app.get("/api/members/next-id", isAuthenticated, isAdmin, async (_req, res) => {
+    res.json({ nextId: await storage.getNextMemberId() });
+  });
+  app.get("/api/members/check-id/:memberId", isAuthenticated, isAdmin, async (req, res) => {
+    const existing = await storage.getMemberByMemberId(req.params.memberId);
+    res.json({ available: !existing });
+  });
+
   app.get("/api/members/:id", isAuthenticated, isAdmin, async (req, res) => {
     const m = await storage.getMember(Number(req.params.id));
     if (!m) return res.status(404).json({ message: "No encontrado" });
@@ -163,8 +173,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
   app.get("/api/members/:id/workouts", isAuthenticated, isAdmin, async (req, res) => {
-    const active = await storage.getMemberActiveWorkouts(Number(req.params.id));
-    res.json(active.map(r => r.workout));
+    res.json(await storage.getMemberActiveWorkouts(Number(req.params.id)));
+  });
+  app.put("/api/members/:memberId/workouts/:memberWorkoutId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      const memberWorkoutId = Number(req.params.memberWorkoutId);
+      const input = assignWorkoutSchema.parse(req.body);
+      res.json(await storage.updatePersonalizedWorkout(memberWorkoutId, input));
+    } catch (err) {
+      if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      res.status(500).json({ message: "Error interno" });
+    }
+  });
+  app.delete("/api/members/:memberId/workouts/:memberWorkoutId", isAuthenticated, isAdmin, async (req, res) => {
+    try {
+      await storage.deletePersonalizedWorkout(Number(req.params.memberWorkoutId));
+      res.status(204).send();
+    } catch (err) {
+      res.status(500).json({ message: "Error interno" });
+    }
   });
 
   // ── Admin — Check-ins ─────────────────────────────────────────────────────

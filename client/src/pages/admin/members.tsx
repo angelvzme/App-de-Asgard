@@ -1,5 +1,10 @@
-import { useState } from "react";
-import { useMembers, useCreateMember, useUpdateMember, useDeleteMember, useCreatePayment, useAssignWorkout } from "@/hooks/use-members";
+import { useState, useEffect, useRef } from "react";
+import {
+  useMembers, useCreateMember, useUpdateMember, useDeleteMember, useCreatePayment,
+  useAssignWorkout, useMemberActiveWorkouts, useUpdateAssignedWorkout, useDeleteAssignedWorkout,
+  useNextMemberId, useCheckMemberId,
+  type ActiveMemberWorkout,
+} from "@/hooks/use-members";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, MoreHorizontal, Pencil, Trash, MessageCircle, CreditCard, Shield, Dumbbell } from "lucide-react";
+import { Search, Plus, MoreHorizontal, Pencil, Trash, MessageCircle, CreditCard, Shield, Dumbbell, ClipboardList } from "lucide-react";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import AdminLayout from "@/components/layout-admin";
 import { format } from "date-fns";
@@ -31,12 +36,51 @@ function SessionsBadge({ n, isUnlimited }: { n: number; isUnlimited: boolean }) 
 
 function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const create = useCreateMember();
-  const [form, setForm] = useState({ firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 0, membershipType: "sessions", birthDate: "", notes: "" });
+  const emptyForm = { firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 0, membershipType: "sessions", birthDate: "", notes: "" };
+  const [form, setForm] = useState(emptyForm);
+  const [memberIdTouched, setMemberIdTouched] = useState(false);
+  const [checkIdInput, setCheckIdInput] = useState("");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const { data: nextIdData } = useNextMemberId(open);
+  const { data: checkData, isFetching: isCheckingId } = useCheckMemberId(checkIdInput, checkIdInput.length > 0);
+
+  // Auto-fill memberId when dialog opens
+  useEffect(() => {
+    if (open && nextIdData?.nextId && !memberIdTouched) {
+      setForm(p => ({ ...p, memberId: nextIdData.nextId }));
+    }
+  }, [open, nextIdData]);
+
+  // Reset on close
+  useEffect(() => {
+    if (!open) {
+      setForm(emptyForm);
+      setMemberIdTouched(false);
+      setCheckIdInput("");
+    }
+  }, [open]);
+
+  const handleMemberIdChange = (v: string) => {
+    setForm(p => ({ ...p, memberId: v }));
+    setMemberIdTouched(true);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => setCheckIdInput(v), 500);
+  };
+
   const set = (k: string, v: any) => setForm(p => ({ ...p, [k]: v }));
+
+  const idUnavailable = checkIdInput === form.memberId && checkData?.available === false;
+  const canSubmit = !create.isPending && !idUnavailable && form.memberId.trim().length > 0;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    create.mutate({ ...form, active: true, initialSessions: Number(form.initialSessions) || 0 }, { onSuccess: () => { onOpenChange(false); setForm({ firstName: "", lastName: "", memberId: "", email: "", phone: "", initialSessions: 0, membershipType: "sessions", birthDate: "", notes: "" }); } });
+    if (!canSubmit) return;
+    create.mutate({ ...form, active: true, initialSessions: Number(form.initialSessions) || 0 }, {
+      onSuccess: () => { onOpenChange(false); },
+    });
   };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[480px] bg-card border-border max-h-[90vh] overflow-y-auto">
@@ -44,7 +88,19 @@ function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1">
             <Label>ID de Miembro <span className="text-primary text-xs">(requerido)</span></Label>
-            <Input value={form.memberId} onChange={e => set("memberId", e.target.value)} placeholder="Ej: 1003" required />
+            <Input
+              value={form.memberId}
+              onChange={e => handleMemberIdChange(e.target.value)}
+              placeholder="Ej: 1007"
+              required
+              className={idUnavailable ? "border-red-500 focus-visible:ring-red-500" : ""}
+            />
+            {idUnavailable && (
+              <p className="text-xs text-red-400">Este ID ya está en uso</p>
+            )}
+            {isCheckingId && (
+              <p className="text-xs text-muted-foreground">Verificando disponibilidad...</p>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1"><Label>Nombre</Label><Input value={form.firstName} onChange={e => set("firstName", e.target.value)} placeholder="Opcional" /></div>
@@ -65,7 +121,7 @@ function AddMemberDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
           </div>
           <div className="space-y-1"><Label>Fecha de Nacimiento</Label><Input type="date" value={form.birthDate} onChange={e => set("birthDate", e.target.value)} /></div>
           <div className="space-y-1"><Label>Notas</Label><Textarea value={form.notes} onChange={e => set("notes", e.target.value)} rows={2} placeholder="Opcional" /></div>
-          <DialogFooter><Button type="submit" disabled={create.isPending}>{create.isPending ? "Creando..." : "Crear Miembro"}</Button></DialogFooter>
+          <DialogFooter><Button type="submit" disabled={!canSubmit}>{create.isPending ? "Creando..." : "Crear Miembro"}</Button></DialogFooter>
         </form>
       </DialogContent>
     </Dialog>
@@ -263,6 +319,247 @@ function AssignWorkoutDialog({ member, open, onOpenChange }: { member: Member; o
   );
 }
 
+// ── Edit Assigned Workout Dialog ──────────────────────────────────────────
+function EditAssignedWorkoutDialog({
+  member, assignedWorkout, open, onOpenChange,
+}: { member: Member; assignedWorkout: ActiveMemberWorkout; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const update = useUpdateAssignedWorkout(member.id);
+  const [title, setTitle] = useState(assignedWorkout.workout.title);
+  const [blocks, setBlocks] = useState<WorkoutBlock[]>((assignedWorkout.workout.blocks as WorkoutBlock[]) || [emptyBlock()]);
+
+  useEffect(() => {
+    if (open) {
+      setTitle(assignedWorkout.workout.title);
+      setBlocks((assignedWorkout.workout.blocks as WorkoutBlock[])?.length ? assignedWorkout.workout.blocks as WorkoutBlock[] : [emptyBlock()]);
+    }
+  }, [open, assignedWorkout]);
+
+  const addBlock = () => setBlocks(p => [...p, emptyBlock()]);
+  const removeBlock = (i: number) => setBlocks(p => p.filter((_, idx) => idx !== i));
+  const updateBlock = (i: number, b: WorkoutBlock) => setBlocks(p => p.map((bl, idx) => idx === i ? b : bl));
+  const setEx = (bi: number, ei: number, k: keyof Exercise, v: any) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.map((e, idx) => idx === ei ? { ...e, [k]: v } : e) });
+  const addEx = (bi: number) => updateBlock(bi, { ...blocks[bi], exercises: [...blocks[bi].exercises, emptyExercise()] });
+  const removeEx = (bi: number, ei: number) =>
+    updateBlock(bi, { ...blocks[bi], exercises: blocks[bi].exercises.filter((_, idx) => idx !== ei) });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    update.mutate({ memberWorkoutId: assignedWorkout.id, data: { title, blocks } }, {
+      onSuccess: () => onOpenChange(false),
+    });
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[560px] bg-card border-border max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="font-display">Editar rutina — {member.firstName} {member.lastName}</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-5 py-2">
+          <div className="space-y-1">
+            <Label>Título general</Label>
+            <Input placeholder="Ej: Rutina de Pierna Personalizada" value={title} onChange={e => setTitle(e.target.value)} required />
+          </div>
+          {blocks.map((block, bi) => (
+            <div key={bi} className="bg-secondary/10 border border-border rounded-xl p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="flex-1 space-y-1">
+                  <Label className="text-xs uppercase tracking-wider text-muted-foreground">Bloque {bi + 1}</Label>
+                  <Input placeholder='Ej: "Rutina A"' value={block.title} onChange={e => updateBlock(bi, { ...block, title: e.target.value })} />
+                </div>
+                {blocks.length > 1 && (
+                  <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-red-400 self-end" onClick={() => removeBlock(bi)}><Trash className="h-4 w-4" /></Button>
+                )}
+              </div>
+              {block.exercises.map((ex, ei) => (
+                <div key={ei} className="bg-card border border-border/60 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-muted-foreground">Ejercicio {ei + 1}</span>
+                    <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400" onClick={() => removeEx(bi, ei)}><Trash className="h-3 w-3" /></Button>
+                  </div>
+                  <Input placeholder="Nombre del ejercicio" value={ex.name} onChange={e => setEx(bi, ei, "name", e.target.value)} />
+                  <div className="grid grid-cols-3 gap-2">
+                    <Input type="number" placeholder="Series" value={ex.sets} onChange={e => setEx(bi, ei, "sets", Number(e.target.value))} />
+                    <Input placeholder="Reps" value={ex.reps} onChange={e => setEx(bi, ei, "reps", e.target.value)} />
+                    <Input placeholder="Duración" value={ex.duration} onChange={e => setEx(bi, ei, "duration", e.target.value)} />
+                  </div>
+                  <Input placeholder="Notas (opcional)" value={ex.notes} onChange={e => setEx(bi, ei, "notes", e.target.value)} />
+                </div>
+              ))}
+              <Button type="button" variant="outline" size="sm" className="w-full border-dashed" onClick={() => addEx(bi)}>
+                <Plus className="h-4 w-4 mr-1" /> Agregar ejercicio
+              </Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" className="w-full" onClick={addBlock}>
+            <Plus className="h-4 w-4 mr-1" /> Agregar bloque
+          </Button>
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="submit" disabled={update.isPending || !title.trim()}>
+              <Dumbbell className="mr-2 h-4 w-4" />
+              {update.isPending ? "Guardando..." : "Guardar Cambios"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── View Assigned Workouts Dialog ─────────────────────────────────────────
+function timeRemaining(expiresAt: string | Date): string {
+  const ms = new Date(expiresAt).getTime() - Date.now();
+  if (ms <= 0) return "Expirada";
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  if (h > 0) return `Expira en ${h}h ${m}min`;
+  return `Expira en ${m}min`;
+}
+
+function ViewWorkoutsDialog({
+  member, open, onOpenChange,
+}: { member: Member; open: boolean; onOpenChange: (v: boolean) => void }) {
+  const { data: activeWorkouts, isLoading } = useMemberActiveWorkouts(member.id, open);
+  const deleteWorkout = useDeleteAssignedWorkout(member.id);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [editingWorkout, setEditingWorkout] = useState<ActiveMemberWorkout | null>(null);
+
+  // Auto-close if no workouts remain
+  useEffect(() => {
+    if (!isLoading && activeWorkouts && activeWorkouts.length === 0 && open) {
+      onOpenChange(false);
+    }
+  }, [activeWorkouts, isLoading]);
+
+  const handleDelete = (aw: ActiveMemberWorkout) => {
+    if (confirmDeleteId === aw.id) {
+      deleteWorkout.mutate(aw.id, {
+        onSuccess: () => setConfirmDeleteId(null),
+      });
+    } else {
+      setConfirmDeleteId(aw.id);
+    }
+  };
+
+  return (
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[520px] bg-card border-border max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="font-display">Rutinas asignadas — {member.firstName} {member.lastName}</DialogTitle>
+          </DialogHeader>
+          <div className="py-2 space-y-3">
+            {isLoading ? (
+              <div className="flex justify-center py-8"><div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" /></div>
+            ) : activeWorkouts && activeWorkouts.length > 0 ? (
+              activeWorkouts.map(aw => (
+                <div key={aw.id} className="border border-border rounded-xl p-4 space-y-2 bg-secondary/10">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-medium text-sm">{aw.workout.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        Asignada: {format(new Date(aw.assignedAt!), "d MMM yyyy, HH:mm", { locale: es })}
+                      </p>
+                      <p className="text-xs text-yellow-400 mt-0.5">{timeRemaining(aw.expiresAt)}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button size="sm" variant="outline" className="flex-1" onClick={() => { setConfirmDeleteId(null); setEditingWorkout(aw); }}>
+                      <Pencil className="h-3 w-3 mr-1" /> Editar
+                    </Button>
+                    {confirmDeleteId === aw.id ? (
+                      <div className="flex gap-1 flex-1">
+                        <Button size="sm" variant="destructive" className="flex-1" disabled={deleteWorkout.isPending}
+                          onClick={() => handleDelete(aw)}>
+                          {deleteWorkout.isPending ? "..." : "Confirmar"}
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteId(null)}>Cancelar</Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="outline" className="flex-1 text-red-400 hover:text-red-300 hover:border-red-500"
+                        onClick={() => setConfirmDeleteId(aw.id)}>
+                        <Trash className="h-3 w-3 mr-1" /> Eliminar
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-6">Sin rutinas activas</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+      {editingWorkout && (
+        <EditAssignedWorkoutDialog
+          member={member}
+          assignedWorkout={editingWorkout}
+          open={!!editingWorkout}
+          onOpenChange={v => { if (!v) setEditingWorkout(null); }}
+        />
+      )}
+    </>
+  );
+}
+
+// ── Member Row Actions (lazy-fetches active workouts on dropdown open) ────
+function MemberRowActions({
+  member,
+  onEdit, onPayment, onAssignWorkout, onViewWorkouts, onDelete,
+}: {
+  member: Member;
+  onEdit: () => void;
+  onPayment: () => void;
+  onAssignWorkout: () => void;
+  onViewWorkouts: () => void;
+  onDelete: () => void;
+}) {
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const { data: activeWorkouts } = useMemberActiveWorkouts(member.id, dropdownOpen);
+  const hasActiveWorkouts = (activeWorkouts?.length ?? 0) > 0;
+
+  return (
+    <div className="flex items-center justify-end gap-1">
+      {needsWhatsApp(member) && (
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-green-500 hover:text-green-400"
+          onClick={() => sendWhatsApp(member)} title="Enviar recordatorio">
+          <MessageCircle className="h-4 w-4" />
+        </Button>
+      )}
+      <DropdownMenu open={dropdownOpen} onOpenChange={setDropdownOpen}>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-52">
+          <DropdownMenuItem onClick={onEdit}><Pencil className="mr-2 h-4 w-4" />Editar</DropdownMenuItem>
+          {!member.isSpecialUser && (
+            <DropdownMenuItem onClick={onPayment}><CreditCard className="mr-2 h-4 w-4" />Registrar Pago</DropdownMenuItem>
+          )}
+          {!member.isSpecialUser && (
+            <DropdownMenuItem onClick={onAssignWorkout}><Dumbbell className="mr-2 h-4 w-4" />Asignar rutina</DropdownMenuItem>
+          )}
+          {!member.isSpecialUser && (
+            hasActiveWorkouts ? (
+              <DropdownMenuItem onClick={onViewWorkouts}>
+                <ClipboardList className="mr-2 h-4 w-4" />Ver rutinas asignadas
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled className="text-muted-foreground cursor-not-allowed">
+                <ClipboardList className="mr-2 h-4 w-4" />Sin rutinas asignadas
+              </DropdownMenuItem>
+            )
+          )}
+          <DropdownMenuSeparator />
+          <DropdownMenuItem className="text-red-500" onClick={onDelete}><Trash className="mr-2 h-4 w-4" />Eliminar</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
+  );
+}
+
 function sendWhatsApp(member: Member) {
   if (!member.phone) return;
   const phone = member.phone.replace(/\D/g, "");
@@ -295,6 +592,8 @@ export default function MembersPage() {
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isPaymentOpen, setIsPaymentOpen] = useState(false);
   const [isWorkoutOpen, setIsWorkoutOpen] = useState(false);
+  const [isViewWorkoutsOpen, setIsViewWorkoutsOpen] = useState(false);
+
 
   const specialMembers = members?.filter(m => m.isSpecialUser) || [];
   const regularMembers = members?.filter(m => !m.isSpecialUser) || [];
@@ -310,6 +609,7 @@ export default function MembersPage() {
   const openEdit = (m: Member) => { setSelectedMember(m); setIsEditOpen(true); };
   const openPayment = (m: Member) => { setSelectedMember(m); setIsPaymentOpen(true); };
   const openWorkout = (m: Member) => { setSelectedMember(m); setIsWorkoutOpen(true); };
+  const openViewWorkouts = (m: Member) => { setSelectedMember(m); setIsViewWorkoutsOpen(true); };
 
   return (
     <AdminLayout>
@@ -375,27 +675,14 @@ export default function MembersPage() {
                   </TableCell>
                   <TableCell className="hidden md:table-cell text-muted-foreground text-sm">{member.phone || member.email || "—"}</TableCell>
                   <TableCell className="text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {needsWhatsApp(member) && (
-                        <Button variant="ghost" size="icon" className="h-8 w-8 text-green-500 hover:text-green-400" onClick={() => sendWhatsApp(member)} title="Enviar recordatorio">
-                          <MessageCircle className="h-4 w-4" />
-                        </Button>
-                      )}
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48">
-                          <DropdownMenuItem onClick={() => openEdit(member)}><Pencil className="mr-2 h-4 w-4" />Editar</DropdownMenuItem>
-                          {!member.isSpecialUser && (
-                            <DropdownMenuItem onClick={() => openPayment(member)}><CreditCard className="mr-2 h-4 w-4" />Registrar Pago</DropdownMenuItem>
-                          )}
-                          {!member.isSpecialUser && (
-                            <DropdownMenuItem onClick={() => openWorkout(member)}><Dumbbell className="mr-2 h-4 w-4" />Asignar rutina</DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-red-500" onClick={() => handleDelete(member.id)}><Trash className="mr-2 h-4 w-4" />Eliminar</DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </div>
+                    <MemberRowActions
+                      member={member}
+                      onEdit={() => openEdit(member)}
+                      onPayment={() => openPayment(member)}
+                      onAssignWorkout={() => openWorkout(member)}
+                      onViewWorkouts={() => openViewWorkouts(member)}
+                      onDelete={() => handleDelete(member.id)}
+                    />
                   </TableCell>
                 </TableRow>
               ))}
@@ -410,6 +697,7 @@ export default function MembersPage() {
           <EditMemberDialog member={selectedMember} open={isEditOpen} onOpenChange={setIsEditOpen} />
           <PaymentDialog member={selectedMember} open={isPaymentOpen} onOpenChange={setIsPaymentOpen} />
           <AssignWorkoutDialog member={selectedMember} open={isWorkoutOpen} onOpenChange={setIsWorkoutOpen} />
+          <ViewWorkoutsDialog member={selectedMember} open={isViewWorkoutsOpen} onOpenChange={setIsViewWorkoutsOpen} />
         </>
       )}
     </AdminLayout>

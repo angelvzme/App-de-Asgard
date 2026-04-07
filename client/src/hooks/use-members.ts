@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import type { Member, CheckIn, Payment, Workout, InsertPayment, UpsertWorkout, AssignWorkout } from "@shared/schema";
+import type { Member, CheckIn, Payment, Workout, MemberWorkout, InsertPayment, UpsertWorkout, AssignWorkout } from "@shared/schema";
 
 const json = async (res: Response) => {
   const data = await res.json();
@@ -200,5 +200,66 @@ export function useAssignWorkout(memberId: number) {
       toast({ title: "Rutina asignada", description: "El miembro verá la rutina en su dashboard por 6 horas." });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
+
+export type ActiveMemberWorkout = MemberWorkout & { workout: Workout };
+
+export function useMemberActiveWorkouts(memberId: number, enabled = true) {
+  return useQuery<ActiveMemberWorkout[]>({
+    queryKey: [`/api/members/${memberId}/workouts`],
+    queryFn: () => fetch(`/api/members/${memberId}/workouts`, { credentials: "include" }).then(json),
+    enabled: enabled && !!memberId,
+  });
+}
+
+export function useUpdateAssignedWorkout(memberId: number) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: ({ memberWorkoutId, data }: { memberWorkoutId: number; data: AssignWorkout }) =>
+      fetch(`/api/members/${memberId}/workouts/${memberWorkoutId}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data), credentials: "include",
+      }).then(json),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/members/${memberId}/workouts`] });
+      toast({ title: "Rutina actualizada" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
+
+export function useDeleteAssignedWorkout(memberId: number) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  return useMutation({
+    mutationFn: (memberWorkoutId: number) =>
+      fetch(`/api/members/${memberId}/workouts/${memberWorkoutId}`, {
+        method: "DELETE", credentials: "include",
+      }).then(r => { if (!r.ok) throw new Error("Error al eliminar"); }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/members/${memberId}/workouts`] });
+      toast({ title: "Rutina eliminada" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+}
+
+export function useNextMemberId(enabled = true) {
+  return useQuery<{ nextId: string }>({
+    queryKey: ["/api/members/next-id"],
+    queryFn: () => fetch("/api/members/next-id", { credentials: "include" }).then(json),
+    enabled,
+    staleTime: 0,
+  });
+}
+
+export function useCheckMemberId(memberId: string, enabled = true) {
+  return useQuery<{ available: boolean }>({
+    queryKey: ["/api/members/check-id", memberId],
+    queryFn: () => fetch(`/api/members/check-id/${encodeURIComponent(memberId)}`, { credentials: "include" }).then(json),
+    enabled: enabled && memberId.trim().length > 0,
+    staleTime: 0,
   });
 }

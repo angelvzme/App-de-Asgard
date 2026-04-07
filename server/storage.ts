@@ -155,6 +155,30 @@ export class DatabaseStorage {
       .orderBy(desc(memberWorkouts.assignedAt));
     return rows.map(r => ({ ...r.mw, workout: r.workout }));
   }
+
+  async getNextMemberId(): Promise<string> {
+    const all = await db.select({ memberId: members.memberId }).from(members);
+    const numericIds = all.map(m => parseInt(m.memberId, 10)).filter(n => !isNaN(n));
+    if (numericIds.length === 0) return "1001";
+    return String(Math.max(...numericIds) + 1);
+  }
+
+  async updatePersonalizedWorkout(memberWorkoutId: number, data: AssignWorkout): Promise<Workout> {
+    const [mw] = await db.select().from(memberWorkouts).where(eq(memberWorkouts.id, memberWorkoutId));
+    if (!mw) throw new Error("Asignación no encontrada");
+    const [w] = await db.update(workouts)
+      .set({ title: data.title, blocks: data.blocks, updatedAt: new Date() })
+      .where(and(eq(workouts.id, mw.workoutId), eq(workouts.isPersonalized, true)))
+      .returning();
+    return w;
+  }
+
+  async deletePersonalizedWorkout(memberWorkoutId: number): Promise<void> {
+    const [mw] = await db.select().from(memberWorkouts).where(eq(memberWorkouts.id, memberWorkoutId));
+    if (!mw) return;
+    await db.delete(memberWorkouts).where(eq(memberWorkouts.id, memberWorkoutId));
+    await db.delete(workouts).where(and(eq(workouts.id, mw.workoutId), eq(workouts.isPersonalized, true)));
+  }
 }
 
 export const storage = new DatabaseStorage();
