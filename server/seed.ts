@@ -126,15 +126,31 @@ export async function seedDatabase() {
 
   const exerciseAlters = [
     `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS has_weight BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
   ];
   for (const alter of exerciseAlters) {
     try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
   }
 
+  const workoutAlters2 = [
+    `ALTER TABLE workouts ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
+  ];
+  for (const alter of workoutAlters2) {
+    try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
+  }
+
   const workoutExercisesAlters = [
     `ALTER TABLE workout_exercises ADD COLUMN IF NOT EXISTS weight_lbs INTEGER`,
+    `ALTER TABLE workout_exercises ADD COLUMN IF NOT EXISTS "order" INTEGER NOT NULL DEFAULT 0`,
   ];
   for (const alter of workoutExercisesAlters) {
+    try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
+  }
+
+  const workoutBlocksAlters = [
+    `ALTER TABLE workout_blocks ADD COLUMN IF NOT EXISTS "order" INTEGER NOT NULL DEFAULT 0`,
+  ];
+  for (const alter of workoutBlocksAlters) {
     try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
   }
 

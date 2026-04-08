@@ -126,9 +126,7 @@ function CheckInButton({ checkIns, member }: { checkIns: CheckIn[] | undefined; 
   if (!member) return null;
 
   const isUnlimited = member.isSpecialUser || member.membershipType === "unlimited";
-  if (isUnlimited) return null; // admins/unlimited don't use this
-
-  const noSessions = member.remainingSessions <= 0;
+  const noSessions = !isUnlimited && member.remainingSessions <= 0;
 
   const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
   const lastCheckIn = checkIns?.[0];
