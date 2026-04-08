@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Save, Moon, Search, Pencil, Dumbbell, Clock } from "lucide-react";
+import { Plus, Trash2, Save, Moon, Search, Pencil, Dumbbell, Clock, BookOpen } from "lucide-react";
 import AdminLayout from "@/components/layout-admin";
 import {
   ExercisePicker, ExerciseItem, renderNotesWithLinks,

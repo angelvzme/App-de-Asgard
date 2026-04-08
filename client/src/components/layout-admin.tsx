@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { LayoutDashboard, Users, Dumbbell, CreditCard, LogOut, Menu, X } from "lucide-react";
+import { LayoutDashboard, Users, Dumbbell, CreditCard, LogOut, Menu, X, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -10,6 +10,7 @@ const navigation = [
   { name: "Panel de Control", href: "/admin", icon: LayoutDashboard },
   { name: "Miembros", href: "/admin/members", icon: Users },
   { name: "Rutinas", href: "/admin/workouts", icon: Dumbbell },
+  { name: "Ejercicios", href: "/admin/exercises", icon: BookOpen },
   { name: "Pagos", href: "/admin/payments", icon: CreditCard },
 ];
 
