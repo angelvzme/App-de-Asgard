@@ -1,10 +1,11 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
-import MemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import { createServer } from "http";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { seedDatabase } from "./seed";
+import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -15,7 +16,7 @@ app.set('trust proxy', 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-const SessionStore = MemoryStore(session);
+const PgSession = connectPgSimple(session);
 
 export function log(message: string, source = "express") {
   const t = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit", hour12: true });
@@ -27,7 +28,7 @@ export function log(message: string, source = "express") {
     secret: process.env.SESSION_SECRET || "asgard-gym-2026",
     resave: false,
     saveUninitialized: false,
-    store: new SessionStore({ checkPeriod: 86400000 }),
+    store: new PgSession({ pool, tableName: "session", createTableIfMissing: true }),
     cookie: {
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
