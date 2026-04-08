@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { useExercises, useCreateExercise } from "@/hooks/use-members";
+import { useExercises, useCreateExercise, useRecentExercises } from "@/hooks/use-members";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,6 +28,27 @@ export type LocalExercise = {
 // ── 3-step Add Exercise Dialog ─────────────────────────────────────────────────
 type Step = 1 | 2 | 3;
 
+function ExerciseListItem({
+  ex,
+  onClick,
+}: {
+  ex: LibraryExercise;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-secondary/50 transition-colors flex items-center justify-between gap-2 text-sm"
+      onClick={onClick}
+    >
+      <span className="font-medium truncate">{ex.name}</span>
+      {ex.hasWeight && (
+        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">Con peso</span>
+      )}
+    </button>
+  );
+}
+
 function AddExerciseDialog({
   open,
   onOpenChange,
@@ -39,6 +60,7 @@ function AddExerciseDialog({
 }) {
   const create = useCreateExercise();
   const { data: allExercises } = useExercises();
+  const { data: recentExercises } = useRecentExercises();
 
   const [step, setStep] = useState<Step>(1);
   const [name, setName] = useState("");
@@ -49,7 +71,7 @@ function AddExerciseDialog({
   const [duration, setDuration] = useState("");
   const [weightLbs, setWeightLbs] = useState<string>("");
   const [selectedExercise, setSelectedExercise] = useState<LibraryExercise | null>(null);
-  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [showDropdown, setShowDropdown] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -57,7 +79,6 @@ function AddExerciseDialog({
 
   useEffect(() => {
     if (!open) {
-      // Reset all state on close
       setStep(1);
       setName("");
       setNotes("");
@@ -67,7 +88,7 @@ function AddExerciseDialog({
       setDuration("");
       setWeightLbs("");
       setSelectedExercise(null);
-      setShowSuggestions(false);
+      setShowDropdown(false);
       setDebouncedName("");
     } else {
       setTimeout(() => nameRef.current?.focus(), 50);
@@ -80,21 +101,21 @@ function AddExerciseDialog({
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [name]);
 
-  const suggestions = debouncedName.length >= 1
+  const suggestions = debouncedName.trim().length >= 1
     ? (allExercises || []).filter(e =>
         e.name.toLowerCase().includes(debouncedName.toLowerCase())
-      ).slice(0, 5)
+      ).slice(0, 7)
     : [];
 
   const isExactMatch = (allExercises || []).some(
     e => e.name.toLowerCase() === name.trim().toLowerCase()
   );
 
-  const handleSelectSuggestion = (ex: LibraryExerciseWithUsage) => {
+  const handleSelectExercise = (ex: LibraryExercise) => {
     setSelectedExercise(ex);
     setName(ex.name);
     setHasWeight(ex.hasWeight);
-    setShowSuggestions(false);
+    setShowDropdown(false);
     setStep(3);
   };
 
@@ -104,9 +125,7 @@ function AddExerciseDialog({
       e => e.name.toLowerCase() === name.trim().toLowerCase()
     );
     if (exact) {
-      setSelectedExercise(exact);
-      setHasWeight(exact.hasWeight);
-      setStep(3);
+      handleSelectExercise(exact);
     } else {
       setStep(2);
     }
@@ -143,9 +162,16 @@ function AddExerciseDialog({
     onOpenChange(false);
   };
 
+  // Exercises to show when input is empty
+  const showingRecent = recentExercises && recentExercises.length > 0;
+  const emptyListItems: LibraryExercise[] = showingRecent
+    ? recentExercises!
+    : (allExercises || []).slice(0, 6);
+  const emptyListLabel = showingRecent ? "Usados recientemente" : "Todos los ejercicios";
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[460px] bg-card border-border">
+      <DialogContent className="sm:max-w-[480px] bg-card border-border">
         <DialogHeader>
           <DialogTitle>
             {step === 1 && "Añadir ejercicio"}
@@ -162,48 +188,90 @@ function AddExerciseDialog({
           </div>
         </DialogHeader>
 
-        {/* ── Step 1: Name + suggestions ── */}
+        {/* ── Step 1: Search + suggestions ── */}
         {step === 1 && (
-          <div className="space-y-4 py-2">
+          <div className="space-y-3 py-2">
+            {/* Search input with dropdown */}
             <div className="space-y-1 relative">
               <Label>Nombre del ejercicio <span className="text-primary text-xs">(requerido)</span></Label>
               <Input
                 ref={nameRef}
-                placeholder="Ej: Press de banca, Sentadilla..."
+                placeholder="Buscar o escribir nombre nuevo..."
                 value={name}
-                onChange={e => { setName(e.target.value); setShowSuggestions(true); setSelectedExercise(null); }}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                onChange={e => {
+                  setName(e.target.value);
+                  setShowDropdown(true);
+                  setSelectedExercise(null);
+                }}
+                onFocus={() => setShowDropdown(true)}
+                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
                 autoComplete="off"
               />
-              {showSuggestions && suggestions.length > 0 && (
+
+              {/* Dropdown when typing */}
+              {showDropdown && debouncedName.trim().length >= 1 && (suggestions.length > 0 || (!isExactMatch && name.trim())) && (
                 <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
                   {suggestions.map(ex => (
                     <button
                       key={ex.id}
                       type="button"
                       className="w-full text-left px-3 py-2.5 hover:bg-secondary/50 transition-colors flex items-center justify-between gap-2 text-sm"
-                      onMouseDown={() => handleSelectSuggestion(ex)}
+                      onMouseDown={() => handleSelectExercise(ex)}
                     >
-                      <div className="flex-1 min-w-0">
-                        <span className="font-medium truncate block">{ex.name}</span>
-                        {ex.notes && (
-                          <span className="text-xs text-muted-foreground truncate block">
-                            {ex.notes.slice(0, 50)}{ex.notes.length > 50 ? "…" : ""}
-                          </span>
-                        )}
-                      </div>
+                      <span className="font-medium truncate">{ex.name}</span>
+                      {ex.notes && (
+                        <span className="text-xs text-muted-foreground truncate hidden sm:block">
+                          {ex.notes.slice(0, 40)}{ex.notes.length > 40 ? "…" : ""}
+                        </span>
+                      )}
                       {ex.hasWeight && (
-                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">con peso</span>
+                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">Con peso</span>
                       )}
                     </button>
                   ))}
+                  {/* Create-new option */}
+                  {!isExactMatch && name.trim() && (
+                    <button
+                      type="button"
+                      className="w-full text-left px-3 py-2.5 hover:bg-primary/10 text-primary transition-colors flex items-center gap-2 text-sm border-t border-border/40"
+                      onMouseDown={handleStep1Continue}
+                    >
+                      <Plus className="h-3.5 w-3.5 shrink-0" />
+                      <span>Crear "<span className="font-semibold">{name.trim()}</span>" como ejercicio nuevo</span>
+                    </button>
+                  )}
                 </div>
               )}
             </div>
+
             {isExactMatch && (
               <p className="text-xs text-green-400">✓ Ejercicio encontrado en la biblioteca</p>
             )}
+
+            {/* Recent / all list when input is empty */}
+            {!name.trim() && emptyListItems.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider px-1">
+                  {emptyListLabel}
+                </p>
+                <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1">
+                  {emptyListItems.map(ex => (
+                    <ExerciseListItem
+                      key={ex.id}
+                      ex={ex}
+                      onClick={() => handleSelectExercise(ex)}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {!name.trim() && emptyListItems.length === 0 && (
+              <p className="text-xs text-muted-foreground px-1 py-2">
+                Escribe el nombre del ejercicio para buscarlo o crearlo nuevo.
+              </p>
+            )}
+
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
               <Button type="button" disabled={!name.trim()} onClick={handleStep1Continue}>
@@ -322,8 +390,8 @@ function AddExerciseDialog({
             )}
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => {
-                // Go back to step 1 if exercise came from search, step 2 if it was new
-                setStep(selectedExercise && (allExercises || []).some(e => e.id === selectedExercise.id) ? 1 : 2);
+                const isNew = selectedExercise && !(allExercises || []).some(e => e.id === selectedExercise.id);
+                setStep(isNew ? 2 : 1);
               }}>Atrás</Button>
               <Button type="button" onClick={handleStep3Add}>
                 <Plus className="h-4 w-4 mr-1" /> Añadir a la rutina

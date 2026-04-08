@@ -106,6 +106,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.status(201).json(await storage.createExercise(input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("[POST /api/exercises]", err);
       res.status(500).json({ message: "Error interno" });
     }
   });
@@ -116,6 +117,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.json(await storage.updateExercise(id, input));
     } catch (err) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
+      console.error("[PUT /api/exercises/:id]", err);
       res.status(500).json({ message: "Error interno" });
     }
   });
@@ -124,6 +126,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await storage.deleteExercise(Number(req.params.id));
       res.status(204).send();
     } catch (err) {
+      console.error("[DELETE /api/exercises/:id]", err);
       res.status(500).json({ message: "Error interno" });
     }
   });
