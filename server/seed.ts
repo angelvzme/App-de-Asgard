@@ -88,6 +88,19 @@ export async function seedDatabase() {
     )
   `);
 
+  // Session store (connect-pg-simple) — must exist before first login
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS session (
+      sid VARCHAR NOT NULL,
+      sess JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL,
+      CONSTRAINT session_pkey PRIMARY KEY (sid)
+    )
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON session (expire)
+  `);
+
   // ── Migrations for existing databases ─────────────────────────────────────
   const memberAlters = [
     `ALTER TABLE members ADD COLUMN IF NOT EXISTS membership_type TEXT NOT NULL DEFAULT 'sessions'`,
