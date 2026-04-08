@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   useAllWorkouts, useUpsertWorkout, useDeleteWorkout,
-  useExercises, useUpdateExercise, useDeleteExercise,
+  useExercises, useUpdateExercise, useDeleteExercise, useCreateExercise,
 } from "@/hooks/use-members";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Trash2, Save, Moon, Search, Pencil, BookOpen } from "lucide-react";
+import { Plus, Trash2, Save, Moon, Search, Pencil, Dumbbell, Clock } from "lucide-react";
 import AdminLayout from "@/components/layout-admin";
 import {
   ExercisePicker, ExerciseItem, renderNotesWithLinks,
@@ -33,9 +33,11 @@ function localBlocksFromFull(workout: WorkoutFull | undefined): LocalBlock[] {
       exerciseId: e.exerciseId,
       name: e.name,
       notes: e.notes,
+      hasWeight: e.hasWeight,
       sets: e.sets ?? 3,
       reps: e.reps ?? "",
       duration: e.duration ?? "",
+      weightLbs: e.weightLbs ?? null,
     })),
   }));
 }
@@ -53,8 +55,8 @@ function BlockEditor({
     onChange({ ...block, exercises: block.exercises.map((e, idx) => idx === i ? updated : e) });
   const removeEx = (i: number) =>
     onChange({ ...block, exercises: block.exercises.filter((_, idx) => idx !== i) });
-  const addFromPicker = (ex: { exerciseId: number; name: string; notes: string | null }) =>
-    onChange({ ...block, exercises: [...block.exercises, { ...ex, sets: 3, reps: "", duration: "" }] });
+  const addFromPicker = (ex: LocalExercise) =>
+    onChange({ ...block, exercises: [...block.exercises, ex] });
 
   return (
     <div className="bg-secondary/10 border border-border rounded-2xl p-5 space-y-4">
@@ -111,6 +113,7 @@ function DayEditor({ day, workout }: { day: number; workout?: WorkoutFull }) {
           sets: e.sets || null,
           reps: e.reps || null,
           duration: e.duration || null,
+          weightLbs: e.weightLbs ?? null,
         })),
       })),
     };
@@ -174,6 +177,81 @@ function DayEditor({ day, workout }: { day: number; workout?: WorkoutFull }) {
   );
 }
 
+// ── Shared exercise form fields (used by create + edit dialogs) ───────────────
+function ExerciseFormFields({
+  name, onName,
+  notes, onNotes,
+  hasWeight, onHasWeight,
+}: {
+  name: string; onName: (v: string) => void;
+  notes: string; onNotes: (v: string) => void;
+  hasWeight: boolean; onHasWeight: (v: boolean) => void;
+}) {
+  return (
+    <>
+      <div className="space-y-1">
+        <Label>Nombre <span className="text-primary text-xs">(requerido)</span></Label>
+        <Input value={name} onChange={e => onName(e.target.value)} placeholder="Ej: Sentadilla, Press de banca..." required />
+      </div>
+      <div className="space-y-2">
+        <Label className="text-sm">¿Lleva peso?</Label>
+        <div className="grid grid-cols-2 gap-2">
+          <button type="button" onClick={() => onHasWeight(true)}
+            className={`flex items-center gap-2 p-3 rounded-xl border-2 text-sm transition-all ${hasWeight ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary/20 text-muted-foreground hover:border-border/80"}`}>
+            <Dumbbell className="h-4 w-4" /> Sí, lleva peso
+          </button>
+          <button type="button" onClick={() => onHasWeight(false)}
+            className={`flex items-center gap-2 p-3 rounded-xl border-2 text-sm transition-all ${!hasWeight ? "border-primary bg-primary/10 text-primary" : "border-border bg-secondary/20 text-muted-foreground hover:border-border/80"}`}>
+            <Clock className="h-4 w-4" /> No lleva peso
+          </button>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label>Notas / Enlace de referencia <span className="text-muted-foreground text-xs">(opcional)</span></Label>
+        <Textarea value={notes} onChange={e => onNotes(e.target.value)} rows={3} />
+        {notes.trim() && (
+          <div className="text-xs border border-border/50 rounded-lg p-2 bg-secondary/10">
+            <p className="text-xs font-medium mb-1 text-muted-foreground uppercase tracking-wider">Vista previa:</p>
+            <p className="text-xs leading-relaxed break-words">{renderNotesWithLinks(notes)}</p>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Create Library Exercise Dialog ────────────────────────────────────────────
+function CreateLibraryExerciseDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const create = useCreateExercise();
+  const [name, setName] = useState("");
+  const [notes, setNotes] = useState("");
+  const [hasWeight, setHasWeight] = useState(false);
+  useEffect(() => { if (!open) { setName(""); setNotes(""); setHasWeight(false); } }, [open]);
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+    create.mutate({ name: name.trim(), notes: notes.trim() || null, hasWeight }, {
+      onSuccess: () => onOpenChange(false),
+    });
+  };
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[440px] bg-card border-border">
+        <DialogHeader><DialogTitle>Nuevo ejercicio</DialogTitle></DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <ExerciseFormFields name={name} onName={setName} notes={notes} onNotes={setNotes} hasWeight={hasWeight} onHasWeight={setHasWeight} />
+          <DialogFooter>
+            <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="submit" disabled={create.isPending || !name.trim()}>
+              {create.isPending ? "Guardando..." : "Crear ejercicio"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Edit Exercise Dialog ──────────────────────────────────────────────────────
 function EditExerciseDialog({
   exercise, open, onOpenChange,
@@ -185,10 +263,15 @@ function EditExerciseDialog({
   const update = useUpdateExercise();
   const [name, setName] = useState(exercise.name);
   const [notes, setNotes] = useState(exercise.notes ?? "");
+  const [hasWeight, setHasWeight] = useState(exercise.hasWeight);
+
+  useEffect(() => {
+    if (open) { setName(exercise.name); setNotes(exercise.notes ?? ""); setHasWeight(exercise.hasWeight); }
+  }, [open, exercise]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    update.mutate({ id: exercise.id, name: name.trim(), notes: notes.trim() || null }, {
+    update.mutate({ id: exercise.id, name: name.trim(), notes: notes.trim() || null, hasWeight }, {
       onSuccess: () => onOpenChange(false),
     });
   };
@@ -198,20 +281,7 @@ function EditExerciseDialog({
       <DialogContent className="sm:max-w-[440px] bg-card border-border">
         <DialogHeader><DialogTitle>Editar ejercicio</DialogTitle></DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
-          <div className="space-y-1">
-            <Label>Nombre</Label>
-            <Input value={name} onChange={e => setName(e.target.value)} required />
-          </div>
-          <div className="space-y-1">
-            <Label>Notas / Enlace de referencia</Label>
-            <Textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} />
-            {notes.trim() && (
-              <div className="text-xs border border-border/50 rounded-lg p-2 bg-secondary/10">
-                <p className="text-xs font-medium mb-1 text-muted-foreground uppercase tracking-wider">Vista previa:</p>
-                <p className="text-xs leading-relaxed break-words">{renderNotesWithLinks(notes)}</p>
-              </div>
-            )}
-          </div>
+          <ExerciseFormFields name={name} onName={setName} notes={notes} onNotes={setNotes} hasWeight={hasWeight} onHasWeight={setHasWeight} />
           <DialogFooter>
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>
             <Button type="submit" disabled={update.isPending || !name.trim()}>
@@ -232,10 +302,6 @@ function ExerciseLibrary() {
   const [editingEx, setEditingEx] = useState<LibraryExerciseWithUsage | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-
-  // Import create hook to open from here (reuse the CreateExerciseDialog via ExercisePicker trick)
-  // We'll use a hidden ExercisePicker just for the create dialog
-  const [createOpen, setCreateOpen] = useState(false);
 
   const filtered = (exerciseList || []).filter(e =>
     e.name.toLowerCase().includes(search.toLowerCase())
@@ -279,7 +345,12 @@ function ExerciseLibrary() {
           {filtered.map(ex => (
             <div key={ex.id} className="flex items-start justify-between gap-3 p-3 rounded-xl border border-border bg-secondary/5 hover:bg-secondary/10">
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm">{ex.name}</p>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="font-medium text-sm">{ex.name}</p>
+                  {ex.hasWeight && (
+                    <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">con peso</span>
+                  )}
+                </div>
                 {ex.notes && (
                   <p className="text-xs text-muted-foreground mt-0.5 break-words">
                     {renderNotesWithLinks(ex.notes)}
@@ -335,16 +406,7 @@ function ExerciseLibrary() {
         />
       )}
 
-      {/* Create via ExercisePicker sub-dialog (reuse component) */}
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setShowCreate(false)}>
-          <div className="bg-card border border-border rounded-2xl p-6 w-full max-w-md mx-4" onClick={e => e.stopPropagation()}>
-            <h3 className="font-bold mb-4">Nuevo ejercicio</h3>
-            <ExercisePicker onExerciseAdded={() => setShowCreate(false)} />
-            <Button variant="ghost" size="sm" className="mt-3 w-full" onClick={() => setShowCreate(false)}>Cerrar</Button>
-          </div>
-        </div>
-      )}
+      <CreateLibraryExerciseDialog open={showCreate} onOpenChange={setShowCreate} />
     </div>
   );
 }

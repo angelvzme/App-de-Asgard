@@ -172,12 +172,7 @@ export default function KioskPage() {
             <h2 className="text-4xl md:text-5xl font-display font-bold text-white mb-2">ACCESO CONCEDIDO</h2>
             <p className="text-xl md:text-2xl text-green-400 mb-8 font-medium">¡Bienvenido de nuevo, {result?.member?.firstName}!</p>
             
-            {result?.isUnlimited ? (
-              <div className="bg-primary/10 rounded-2xl p-8 border border-primary/20">
-                <p className="text-muted-foreground text-xs mb-2 uppercase tracking-widest font-semibold">Membresía</p>
-                <p className="text-5xl font-bold text-primary">ILIMITADA ∞</p>
-              </div>
-            ) : (
+            {!result?.isUnlimited && (
               <div className={`rounded-2xl p-8 border ${result?.lastSessionWarning ? 'bg-orange-500/10 border-orange-500/30' : 'bg-secondary/50 border-white/5'}`}>
                 <p className="text-muted-foreground text-xs mb-2 uppercase tracking-widest font-semibold">Sesiones Restantes</p>
                 <p className={`text-6xl font-bold ${result?.lastSessionWarning ? 'text-orange-400' : 'text-white'}`}>{result?.remainingSessions}</p>

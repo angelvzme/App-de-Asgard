@@ -249,6 +249,7 @@ function AssignWorkoutDialog({ member, open, onOpenChange }: { member: Member; o
           sets: ex.sets || null,
           reps: ex.reps || null,
           duration: ex.duration || null,
+          weightLbs: ex.weightLbs ?? null,
         })),
       })),
     };
@@ -291,7 +292,7 @@ function AssignWorkoutDialog({ member, open, onOpenChange }: { member: Member; o
                 />
               ))}
               <ExercisePicker
-                onExerciseAdded={ex => updateBlock(bi, { ...block, exercises: [...block.exercises, { ...ex, sets: 3, reps: "", duration: "" }] })}
+                onExerciseAdded={ex => updateBlock(bi, { ...block, exercises: [...block.exercises, ex] })}
               />
             </div>
           ))}
@@ -329,9 +330,11 @@ function EditAssignedWorkoutDialog({
           exerciseId: e.exerciseId,
           name: e.name,
           notes: e.notes ?? null,
+          hasWeight: e.hasWeight,
           sets: e.sets ?? 3,
           reps: e.reps ?? "",
           duration: e.duration ?? "",
+          weightLbs: e.weightLbs ?? null,
         })),
       }));
       setBlocks(lb.length > 0 ? lb : [emptyBlock()]);
@@ -354,6 +357,7 @@ function EditAssignedWorkoutDialog({
           sets: ex.sets || null,
           reps: ex.reps || null,
           duration: ex.duration || null,
+          weightLbs: ex.weightLbs ?? null,
         })),
       })),
     };
@@ -393,7 +397,7 @@ function EditAssignedWorkoutDialog({
                 />
               ))}
               <ExercisePicker
-                onExerciseAdded={ex => updateBlock(bi, { ...block, exercises: [...block.exercises, { ...ex, sets: 3, reps: "", duration: "" }] })}
+                onExerciseAdded={ex => updateBlock(bi, { ...block, exercises: [...block.exercises, ex] })}
               />
             </div>
           ))}

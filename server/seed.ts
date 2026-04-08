@@ -33,6 +33,7 @@ export async function seedDatabase() {
       id SERIAL PRIMARY KEY,
       name TEXT NOT NULL UNIQUE,
       notes TEXT,
+      has_weight BOOLEAN NOT NULL DEFAULT false,
       created_at TIMESTAMP DEFAULT NOW(),
       updated_at TIMESTAMP DEFAULT NOW()
     )
@@ -71,6 +72,7 @@ export async function seedDatabase() {
       sets INTEGER,
       reps TEXT,
       duration TEXT,
+      weight_lbs INTEGER,
       "order" INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMP DEFAULT NOW()
     )
@@ -106,6 +108,20 @@ export async function seedDatabase() {
     `ALTER TABLE workouts DROP CONSTRAINT IF EXISTS workouts_day_of_week_key`,
   ];
   for (const alter of workoutAlters) {
+    try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
+  }
+
+  const exerciseAlters = [
+    `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS has_weight BOOLEAN NOT NULL DEFAULT false`,
+  ];
+  for (const alter of exerciseAlters) {
+    try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
+  }
+
+  const workoutExercisesAlters = [
+    `ALTER TABLE workout_exercises ADD COLUMN IF NOT EXISTS weight_lbs INTEGER`,
+  ];
+  for (const alter of workoutExercisesAlters) {
     try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
   }
 

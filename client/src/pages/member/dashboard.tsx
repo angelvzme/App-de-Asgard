@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import gymLogo from "@assets/asgard-logo.png";
 import type { CheckIn, Member, WorkoutFull, WorkoutBlockItem } from "@shared/schema";
-import { renderNotesWithLinks } from "@/components/exercise-picker";
+import { parseNotesWithLinks } from "@/lib/utils";
 
 function useMyProfile() {
   return useQuery<Member>({
@@ -79,8 +79,11 @@ function BlocksList({ blocks }: { blocks: WorkoutBlockItem[] }) {
                     {(ex.sets ?? 0) > 0 && <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded">{ex.sets} series</span>}
                     {ex.reps && <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded">{ex.reps} reps</span>}
                     {ex.duration && <span className="text-xs bg-secondary/50 px-2 py-0.5 rounded">{ex.duration}</span>}
+                    {ex.hasWeight && ex.weightLbs != null && (
+                      <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-medium">{ex.weightLbs} lbs</span>
+                    )}
                   </div>
-                  {ex.notes && <p className="text-xs text-muted-foreground mt-1 break-words">{renderNotesWithLinks(ex.notes)}</p>}
+                  {ex.notes && <p className="text-xs text-muted-foreground mt-1 break-words">{parseNotesWithLinks(ex.notes)}</p>}
                 </div>
               </div>
             ))}

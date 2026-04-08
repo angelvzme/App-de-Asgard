@@ -230,6 +230,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Admin — Check-ins ─────────────────────────────────────────────────────
   app.get("/api/check-ins", isAuthenticated, isAdmin, async (_req, res) => res.json(await storage.getCheckIns()));
+  app.get("/api/check-ins/today", isAuthenticated, isAdmin, async (_req, res) => res.json(await storage.getTodayCheckIns()));
 
   // ── Admin — Payments ──────────────────────────────────────────────────────
   app.post("/api/payments", isAuthenticated, isAdmin, async (req, res) => {

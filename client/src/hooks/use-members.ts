@@ -96,6 +96,15 @@ export function useCheckIns() {
   });
 }
 
+export function useTodayCheckIns(enabled = true) {
+  return useQuery<(CheckIn & { member: Member })[]>({
+    queryKey: ["/api/check-ins/today"],
+    queryFn: () => fetch("/api/check-ins/today", { credentials: "include" }).then(json),
+    enabled,
+    refetchInterval: 30000,
+  });
+}
+
 export function useMyCheckIns() {
   return useQuery<CheckIn[]>({
     queryKey: ["/api/me/check-ins"],

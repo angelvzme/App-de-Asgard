@@ -138,10 +138,26 @@ export class DatabaseStorage {
     return sorted.map(id => exList.find(e => e.id === id)!).filter(Boolean);
   }
 
+  async getTodayCheckIns(): Promise<(CheckIn & { member: Member })[]> {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const end = new Date();
+    end.setHours(23, 59, 59, 999);
+    const rows = await db.select({ checkIn: checkIns, member: members })
+      .from(checkIns).innerJoin(members, eq(checkIns.memberId, members.id))
+      .where(and(
+        sql`${checkIns.checkInTime} >= ${start}`,
+        sql`${checkIns.checkInTime} <= ${end}`,
+      ))
+      .orderBy(desc(checkIns.checkInTime));
+    return rows.map(r => ({ ...r.checkIn, member: r.member }));
+  }
+
   async createExercise(data: InsertExercise): Promise<LibraryExercise> {
     const [ex] = await db.insert(exercises).values({
       name: data.name,
       notes: data.notes ?? null,
+      hasWeight: data.hasWeight ?? false,
     }).returning();
     return ex;
   }
@@ -165,8 +181,8 @@ export class DatabaseStorage {
     const rows = await db.execute(sql`
       SELECT
         wb.id AS block_id, wb.title AS block_title, wb."order" AS block_order,
-        we.id AS we_id, we.exercise_id, we.sets, we.reps, we.duration, we."order" AS we_order,
-        e.name AS ex_name, e.notes AS ex_notes
+        we.id AS we_id, we.exercise_id, we.sets, we.reps, we.duration, we.weight_lbs, we."order" AS we_order,
+        e.name AS ex_name, e.notes AS ex_notes, e.has_weight AS ex_has_weight
       FROM workout_blocks wb
       LEFT JOIN workout_exercises we ON we.workout_block_id = wb.id
       LEFT JOIN exercises e ON e.id = we.exercise_id
@@ -191,9 +207,11 @@ export class DatabaseStorage {
           exerciseId: Number(row.exercise_id),
           name: row.ex_name ?? "",
           notes: row.ex_notes ?? null,
+          hasWeight: row.ex_has_weight === true || row.ex_has_weight === 't',
           sets: row.sets != null ? Number(row.sets) : null,
           reps: row.reps ?? null,
           duration: row.duration ?? null,
+          weightLbs: row.weight_lbs != null ? Number(row.weight_lbs) : null,
           order: Number(row.we_order ?? 0),
         });
       }
@@ -227,6 +245,7 @@ export class DatabaseStorage {
           sets: ex.sets ?? null,
           reps: ex.reps ?? null,
           duration: ex.duration ?? null,
+          weightLbs: (ex as any).weightLbs ?? null,
           order: ei,
         });
       }

@@ -43,6 +43,7 @@ export const exercises = pgTable("exercises", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
   notes: text("notes"),
+  hasWeight: boolean("has_weight").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -74,6 +75,7 @@ export const workoutExercises = pgTable("workout_exercises", {
   sets: integer("sets"),
   reps: text("reps"),
   duration: text("duration"),
+  weightLbs: integer("weight_lbs"),
   order: integer("order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -149,6 +151,7 @@ export const insertPaymentSchema = z.object({
 export const insertExerciseSchema = z.object({
   name: z.string().min(1),
   notes: z.string().nullable().optional(),
+  hasWeight: z.boolean().optional().default(false),
 });
 
 export const upsertBlockExerciseSchema = z.object({
@@ -156,6 +159,7 @@ export const upsertBlockExerciseSchema = z.object({
   sets: z.number().int().nullable().optional(),
   reps: z.string().nullable().optional(),
   duration: z.string().nullable().optional(),
+  weightLbs: z.number().int().nullable().optional(),
 });
 
 export const upsertBlockSchema = z.object({
@@ -197,9 +201,11 @@ export type WorkoutExerciseItem = {
   exerciseId: number;
   name: string;
   notes: string | null;
+  hasWeight: boolean;
   sets: number | null;
   reps: string | null;
   duration: string | null;
+  weightLbs: number | null;
   order: number;
 };
 
