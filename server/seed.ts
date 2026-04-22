@@ -161,10 +161,6 @@ export async function seedDatabase() {
     try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }
   }
 
-  // ── ONE-TIME CLEANUP: clear exercise library so user can start fresh ──────
-  await db.execute(sql`DELETE FROM exercises`);
-  console.log("[seed] Cleared all exercises.");
-
   // ── Seed admin members ────────────────────────────────────────────────────
   for (const admin of [
     { memberId: "1001", firstName: "Admin", lastName: "Asgard" },
