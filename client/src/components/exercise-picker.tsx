@@ -71,11 +71,8 @@ function AddExerciseDialog({
   const [duration, setDuration] = useState("");
   const [weightLbs, setWeightLbs] = useState<string>("");
   const [selectedExercise, setSelectedExercise] = useState<LibraryExercise | null>(null);
-  const [showDropdown, setShowDropdown] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const nameRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [debouncedName, setDebouncedName] = useState("");
 
   useEffect(() => {
     if (!open) {
@@ -88,34 +85,27 @@ function AddExerciseDialog({
       setDuration("");
       setWeightLbs("");
       setSelectedExercise(null);
-      setShowDropdown(false);
-      setDebouncedName("");
     } else {
       setTimeout(() => nameRef.current?.focus(), 50);
     }
   }, [open]);
 
-  useEffect(() => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => setDebouncedName(name), 300);
-    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [name]);
-
-  const suggestions = debouncedName.trim().length >= 1
-    ? (allExercises || []).filter(e =>
-        e.name.toLowerCase().includes(debouncedName.toLowerCase())
-      ).slice(0, 7)
-    : [];
+  const query = name.trim().toLowerCase();
+  const allSorted = [...(allExercises || [])].sort((a, b) =>
+    a.name.localeCompare(b.name, "es", { sensitivity: "base" })
+  );
+  const filteredLibrary = query
+    ? allSorted.filter(e => e.name.toLowerCase().includes(query))
+    : allSorted;
 
   const isExactMatch = (allExercises || []).some(
-    e => e.name.toLowerCase() === name.trim().toLowerCase()
+    e => e.name.toLowerCase() === query
   );
 
   const handleSelectExercise = (ex: LibraryExercise) => {
     setSelectedExercise(ex);
     setName(ex.name);
     setHasWeight(ex.hasWeight);
-    setShowDropdown(false);
     setStep(3);
   };
 
@@ -162,12 +152,11 @@ function AddExerciseDialog({
     onOpenChange(false);
   };
 
-  // Exercises to show when input is empty
-  const showingRecent = recentExercises && recentExercises.length > 0;
-  const emptyListItems: LibraryExercise[] = showingRecent
-    ? recentExercises!
-    : (allExercises || []).slice(0, 6);
-  const emptyListLabel = showingRecent ? "Usados recientemente" : "Todos los ejercicios";
+  const recentList: LibraryExercise[] = !query && recentExercises ? recentExercises : [];
+  const recentIds = new Set(recentList.map(e => e.id));
+  const libraryListToShow = query
+    ? filteredLibrary
+    : filteredLibrary.filter(e => !recentIds.has(e.id));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -188,89 +177,85 @@ function AddExerciseDialog({
           </div>
         </DialogHeader>
 
-        {/* ── Step 1: Search + suggestions ── */}
+        {/* ── Step 1: Search + always-visible library list ── */}
         {step === 1 && (
           <div className="space-y-3 py-2">
-            {/* Search input with dropdown */}
-            <div className="space-y-1 relative">
+            <div className="space-y-1">
               <Label>Nombre del ejercicio <span className="text-primary text-xs">(requerido)</span></Label>
               <Input
                 ref={nameRef}
-                placeholder="Buscar o escribir nombre nuevo..."
+                placeholder="Buscar ejercicio o escribir nombre nuevo..."
                 value={name}
                 onChange={e => {
                   setName(e.target.value);
-                  setShowDropdown(true);
                   setSelectedExercise(null);
                 }}
-                onFocus={() => setShowDropdown(true)}
-                onBlur={() => setTimeout(() => setShowDropdown(false), 150)}
                 autoComplete="off"
               />
-
-              {/* Dropdown when typing */}
-              {showDropdown && debouncedName.trim().length >= 1 && (suggestions.length > 0 || (!isExactMatch && name.trim())) && (
-                <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-card border border-border rounded-xl shadow-xl overflow-hidden">
-                  {suggestions.map(ex => (
-                    <button
-                      key={ex.id}
-                      type="button"
-                      className="w-full text-left px-3 py-2.5 hover:bg-secondary/50 transition-colors flex items-center justify-between gap-2 text-sm"
-                      onMouseDown={() => handleSelectExercise(ex)}
-                    >
-                      <span className="font-medium truncate">{ex.name}</span>
-                      {ex.notes && (
-                        <span className="text-xs text-muted-foreground truncate hidden sm:block">
-                          {ex.notes.slice(0, 40)}{ex.notes.length > 40 ? "…" : ""}
-                        </span>
-                      )}
-                      {ex.hasWeight && (
-                        <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded shrink-0">Con peso</span>
-                      )}
-                    </button>
-                  ))}
-                  {/* Create-new option */}
-                  {!isExactMatch && name.trim() && (
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-2.5 hover:bg-primary/10 text-primary transition-colors flex items-center gap-2 text-sm border-t border-border/40"
-                      onMouseDown={handleStep1Continue}
-                    >
-                      <Plus className="h-3.5 w-3.5 shrink-0" />
-                      <span>Crear "<span className="font-semibold">{name.trim()}</span>" como ejercicio nuevo</span>
-                    </button>
-                  )}
-                </div>
+              {isExactMatch && (
+                <p className="text-xs text-green-400 pt-1">✓ Ejercicio encontrado en la biblioteca</p>
               )}
             </div>
 
-            {isExactMatch && (
-              <p className="text-xs text-green-400">✓ Ejercicio encontrado en la biblioteca</p>
-            )}
-
-            {/* Recent / all list when input is empty */}
-            {!name.trim() && emptyListItems.length > 0 && (
-              <div className="space-y-1">
-                <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider px-1">
-                  {emptyListLabel}
-                </p>
-                <div className="max-h-52 overflow-y-auto space-y-0.5 pr-1">
-                  {emptyListItems.map(ex => (
-                    <ExerciseListItem
-                      key={ex.id}
-                      ex={ex}
-                      onClick={() => handleSelectExercise(ex)}
-                    />
-                  ))}
+            {/* Static list — always visible */}
+            <div className="max-h-64 overflow-y-auto space-y-3 pr-1">
+              {recentList.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider px-1">
+                    Usados recientemente
+                  </p>
+                  <div className="space-y-0.5">
+                    {recentList.map(ex => (
+                      <ExerciseListItem
+                        key={`recent-${ex.id}`}
+                        ex={ex}
+                        onClick={() => handleSelectExercise(ex)}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            {!name.trim() && emptyListItems.length === 0 && (
-              <p className="text-xs text-muted-foreground px-1 py-2">
-                Escribe el nombre del ejercicio para buscarlo o crearlo nuevo.
-              </p>
-            )}
+              {libraryListToShow.length > 0 && (
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground font-semibold uppercase tracking-wider px-1">
+                    {query ? "Resultados" : "Biblioteca de ejercicios"}
+                  </p>
+                  <div className="space-y-0.5">
+                    {libraryListToShow.map(ex => (
+                      <ExerciseListItem
+                        key={ex.id}
+                        ex={ex}
+                        onClick={() => handleSelectExercise(ex)}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {query && !isExactMatch && (
+                <button
+                  type="button"
+                  className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-primary/10 text-primary transition-colors flex items-center gap-2 text-sm border border-dashed border-primary/40"
+                  onClick={handleStep1Continue}
+                >
+                  <Plus className="h-3.5 w-3.5 shrink-0" />
+                  <span>Crear "<span className="font-semibold">{name.trim()}</span>" como ejercicio nuevo</span>
+                </button>
+              )}
+
+              {!query && recentList.length === 0 && libraryListToShow.length === 0 && (
+                <p className="text-xs text-muted-foreground px-1 py-4 text-center">
+                  La biblioteca está vacía. Escribe el nombre del ejercicio para crearlo.
+                </p>
+              )}
+
+              {query && libraryListToShow.length === 0 && isExactMatch && (
+                <p className="text-xs text-muted-foreground px-1">
+                  Presiona "Seleccionar" para continuar con este ejercicio.
+                </p>
+              )}
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancelar</Button>

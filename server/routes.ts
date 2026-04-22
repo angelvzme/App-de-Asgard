@@ -104,10 +104,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const input = insertExerciseSchema.parse(req.body);
       res.status(201).json(await storage.createExercise(input));
-    } catch (err) {
+    } catch (err: any) {
       if (err instanceof z.ZodError) return res.status(400).json({ message: err.errors[0].message });
-      console.error("[POST /api/exercises]", err);
-      res.status(500).json({ message: "Error interno" });
+      if (err?.code === "23505" || err?.cause?.code === "23505") {
+        return res.status(400).json({ message: "Ya existe un ejercicio con ese nombre" });
+      }
+      console.error("[POST /api/exercises] FULL ERROR:", err);
+      res.status(500).json({ message: err?.message || "Error interno" });
     }
   });
   app.put("/api/exercises/:id", isAuthenticated, isAdmin, async (req, res) => {

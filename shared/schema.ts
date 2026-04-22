@@ -44,8 +44,8 @@ export const exercises = pgTable("exercises", {
   name: text("name").notNull().unique(),
   notes: text("notes"),
   hasWeight: boolean("has_weight").notNull().default(false),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 // ── Workouts ───────────────────────────────────────────────────────────────────

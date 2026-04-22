@@ -127,6 +127,13 @@ export async function seedDatabase() {
   const exerciseAlters = [
     `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS has_weight BOOLEAN NOT NULL DEFAULT false`,
     `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`,
+    `ALTER TABLE exercises ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW()`,
+    `UPDATE exercises SET updated_at = NOW() WHERE updated_at IS NULL`,
+    `UPDATE exercises SET created_at = NOW() WHERE created_at IS NULL`,
+    `ALTER TABLE exercises ALTER COLUMN updated_at SET DEFAULT NOW()`,
+    `ALTER TABLE exercises ALTER COLUMN updated_at SET NOT NULL`,
+    `ALTER TABLE exercises ALTER COLUMN created_at SET DEFAULT NOW()`,
+    `ALTER TABLE exercises ALTER COLUMN created_at SET NOT NULL`,
   ];
   for (const alter of exerciseAlters) {
     try { await db.execute(sql.raw(alter)); } catch { /* ignore if already done */ }

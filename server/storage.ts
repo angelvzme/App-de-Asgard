@@ -154,10 +154,13 @@ export class DatabaseStorage {
   }
 
   async createExercise(data: InsertExercise): Promise<LibraryExercise> {
+    const now = new Date();
     const [ex] = await db.insert(exercises).values({
       name: data.name,
       notes: data.notes ?? null,
       hasWeight: data.hasWeight ?? false,
+      createdAt: now,
+      updatedAt: now,
     }).returning();
     return ex;
   }
