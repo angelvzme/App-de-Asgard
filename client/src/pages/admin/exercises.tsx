@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, Search, Pencil, Trash2, Dumbbell, Clock } from "lucide-react";
 import AdminLayout from "@/components/layout-admin";
-import { renderNotesWithLinks } from "@/components/exercise-picker";
+import { NotesDisplay } from "@/components/notes-display";
 import type { LibraryExerciseWithUsage } from "@shared/schema";
 
 // ── Shared form fields ────────────────────────────────────────────────────────
@@ -67,7 +67,7 @@ function ExerciseFormFields({
         {notes.trim() && (
           <div className="text-xs border border-border/50 rounded-lg p-2 bg-secondary/10">
             <p className="text-xs font-medium mb-1 text-muted-foreground uppercase tracking-wider">Vista previa:</p>
-            <p className="text-xs leading-relaxed break-words">{renderNotesWithLinks(notes)}</p>
+            <NotesDisplay text={notes} />
           </div>
         )}
       </div>
@@ -268,9 +268,7 @@ export default function ExercisesPage() {
                     )}
                   </div>
                   {ex.notes && (
-                    <p className="text-xs text-muted-foreground mt-0.5 break-words">
-                      {renderNotesWithLinks(ex.notes)}
-                    </p>
+                    <NotesDisplay text={ex.notes} className="text-muted-foreground mt-0.5" />
                   )}
                   {ex.usageCount > 0 && (
                     <p className="text-xs text-muted-foreground/60 mt-1">

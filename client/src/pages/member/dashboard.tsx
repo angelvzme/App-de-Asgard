@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart, Bar, XAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import gymLogo from "@assets/asgard-logo.png";
 import type { CheckIn, Member, WorkoutFull, WorkoutBlockItem } from "@shared/schema";
-import { parseNotesWithLinks } from "@/lib/utils";
+import { NotesDisplay } from "@/components/notes-display";
 
 // ── Data hooks ────────────────────────────────────────────────────────────────
 function useMyProfile() {
@@ -117,7 +117,7 @@ function BlocksList({ blocks }: { blocks: WorkoutBlockItem[] }) {
                       <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded font-medium">{ex.weightLbs} lbs</span>
                     )}
                   </div>
-                  {ex.notes && <p className="text-xs text-muted-foreground mt-1 break-words">{parseNotesWithLinks(ex.notes)}</p>}
+                  {ex.notes && <NotesDisplay text={ex.notes} className="text-muted-foreground mt-1" />}
                 </div>
               </div>
             ))}

@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Plus, Trash2, Dumbbell, Clock, Weight } from "lucide-react";
 import { parseNotesWithLinks } from "@/lib/utils";
+import { NotesDisplay } from "@/components/notes-display";
 import type { LibraryExercise, LibraryExerciseWithUsage } from "@shared/schema";
 
 // Re-export for backward compat in other components
@@ -309,7 +310,7 @@ function AddExerciseDialog({
               {notes.trim() && (
                 <div className="text-xs border border-border/50 rounded-lg p-2 bg-secondary/10">
                   <p className="text-xs font-medium mb-1 text-muted-foreground uppercase tracking-wider">Vista previa:</p>
-                  <p className="text-xs leading-relaxed break-words">{parseNotesWithLinks(notes)}</p>
+                  <NotesDisplay text={notes} />
                 </div>
               )}
             </div>
@@ -326,9 +327,7 @@ function AddExerciseDialog({
         {step === 3 && (
           <div className="space-y-4 py-2">
             {selectedExercise?.notes && (
-              <p className="text-xs text-muted-foreground break-words leading-relaxed">
-                {parseNotesWithLinks(selectedExercise.notes)}
-              </p>
+              <NotesDisplay text={selectedExercise.notes} className="text-muted-foreground" />
             )}
             <div className="grid grid-cols-3 gap-3">
               <div className="space-y-1">
@@ -436,9 +435,7 @@ export function ExerciseItem({
             )}
           </div>
           {exercise.notes && (
-            <p className="text-xs text-muted-foreground mt-0.5 break-words">
-              {parseNotesWithLinks(exercise.notes)}
-            </p>
+            <NotesDisplay text={exercise.notes} className="text-muted-foreground mt-0.5" />
           )}
         </div>
         <Button type="button" variant="ghost" size="icon" className="h-6 w-6 text-red-400 hover:text-red-300 shrink-0"
