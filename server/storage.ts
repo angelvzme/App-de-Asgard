@@ -109,23 +109,22 @@ export class DatabaseStorage {
   async getExercises(): Promise<LibraryExerciseWithUsage[]> {
     const exList = await db.select().from(exercises).orderBy(asc(exercises.name));
     if (exList.length === 0) return [];
-    // get usage counts
-    const counts = await db.execute(sql`
-      SELECT exercise_id, COUNT(*)::int AS cnt FROM workout_exercises GROUP BY exercise_id
-    `);
-    const countMap = new Map<number, number>(
-      (counts as any[]).map((r: any) => [Number(r.exercise_id), Number(r.cnt)])
-    );
+    const countRows = await db
+      .select({ exerciseId: workoutExercises.exerciseId, cnt: sql<number>`count(*)::int` })
+      .from(workoutExercises)
+      .groupBy(workoutExercises.exerciseId);
+    const countMap = new Map(countRows.map(r => [r.exerciseId, Number(r.cnt)]));
     return exList.map(e => ({ ...e, usageCount: countMap.get(e.id) ?? 0 }));
   }
 
   async getRecentExercises(): Promise<LibraryExercise[]> {
-    const rows = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT DISTINCT ON (exercise_id) exercise_id, created_at
       FROM workout_exercises
       ORDER BY exercise_id, created_at DESC
     `);
-    const withDates = (rows as any[]).map((r: any) => ({
+    const rawRows: any[] = Array.isArray(result) ? result : ((result as any).rows ?? []);
+    const withDates = rawRows.map((r: any) => ({
       id: Number(r.exercise_id),
       createdAt: new Date(r.created_at),
     }));
@@ -181,7 +180,7 @@ export class DatabaseStorage {
   // ── Workout Hydration ──────────────────────────────────────────────────────
   async hydrateWorkout(w: Workout): Promise<WorkoutFull> {
     // Single JOIN query: blocks + exercises + exercise library data
-    const rows = await db.execute(sql`
+    const result = await db.execute(sql`
       SELECT
         wb.id AS block_id, wb.title AS block_title, wb."order" AS block_order,
         we.id AS we_id, we.exercise_id, we.sets, we.reps, we.duration, we.weight_lbs, we."order" AS we_order,
@@ -192,9 +191,10 @@ export class DatabaseStorage {
       WHERE wb.workout_id = ${w.id}
       ORDER BY wb."order" ASC, we."order" ASC
     `);
+    const rows: any[] = Array.isArray(result) ? result : ((result as any).rows ?? []);
 
     const blockMap = new Map<number, WorkoutBlockItem>();
-    for (const row of rows as any[]) {
+    for (const row of rows) {
       const blockId = Number(row.block_id);
       if (!blockMap.has(blockId)) {
         blockMap.set(blockId, {

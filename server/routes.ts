@@ -95,10 +95,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ── Admin — Exercise Library ───────────────────────────────────────────────
   app.get("/api/exercises", isAuthenticated, isAdmin, async (_req, res) => {
-    res.json(await storage.getExercises());
+    try {
+      res.json(await storage.getExercises());
+    } catch (err) {
+      console.error("[GET /api/exercises]", err);
+      res.status(500).json({ message: "Error al obtener ejercicios" });
+    }
   });
   app.get("/api/exercises/recent", isAuthenticated, isAdmin, async (_req, res) => {
-    res.json(await storage.getRecentExercises());
+    try {
+      res.json(await storage.getRecentExercises());
+    } catch (err) {
+      console.error("[GET /api/exercises/recent]", err);
+      res.status(500).json({ message: "Error al obtener ejercicios recientes" });
+    }
   });
   app.post("/api/exercises", isAuthenticated, isAdmin, async (req, res) => {
     try {

@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   useExercises, useCreateExercise, useUpdateExercise, useDeleteExercise,
 } from "@/hooks/use-members";
+import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -83,6 +84,7 @@ function CreateExerciseDialog({
   onOpenChange: (v: boolean) => void;
 }) {
   const create = useCreateExercise();
+  const { toast } = useToast();
   const [name, setName] = useState("");
   const [notes, setNotes] = useState("");
   const [hasWeight, setHasWeight] = useState(false);
@@ -96,7 +98,12 @@ function CreateExerciseDialog({
     if (!name.trim()) return;
     create.mutate(
       { name: name.trim(), notes: notes.trim() || null, hasWeight },
-      { onSuccess: () => onOpenChange(false) },
+      {
+        onSuccess: () => {
+          toast({ title: "Ejercicio creado", description: name.trim() });
+          onOpenChange(false);
+        },
+      },
     );
   };
 
@@ -185,7 +192,7 @@ function EditExerciseDialog({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 export default function ExercisesPage() {
-  const { data: exerciseList, isLoading } = useExercises();
+  const { data: exerciseList, isLoading, isError, refetch } = useExercises();
   const deleteEx = useDeleteExercise();
   const [search, setSearch] = useState("");
   const [showCreate, setShowCreate] = useState(false);
@@ -232,6 +239,11 @@ export default function ExercisesPage() {
         {isLoading ? (
           <div className="flex justify-center py-16">
             <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+          </div>
+        ) : isError ? (
+          <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl space-y-3">
+            <p className="text-red-400">Error al cargar los ejercicios.</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()}>Reintentar</Button>
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16 text-muted-foreground border border-dashed border-border rounded-xl">
